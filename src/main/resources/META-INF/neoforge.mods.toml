@@ -1,0 +1,16 @@
+modLoader = "javafml"
+loaderVersion = "[4,)"
+license = "MIT"
+
+[[mods]]
+modId = "sablefix"
+version = "1.0.0"
+displayName = "Sable Fix Core"
+description = """
+Sable 存档自愈与诊断核心。
+E: 主线程卡死监视（比原版看门狗早 40 秒抓现场）
+A: 启动时体检 .slvlr/.slvls 指针
+B: /sablefix check 全量体检
+C: 子层级文件浏览
+D: /sablefix diag 区块诊断
+"""

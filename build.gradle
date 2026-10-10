@@ -1,0 +1,40 @@
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.78'
+}
+
+version = '1.0.0'
+group = 'dev.sfx'
+
+base {
+    archivesName = 'sablefix'
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(21)
+}
+
+neoForge {
+    version = project.neo_version
+
+    runs {
+        client {
+            client()
+            if (System.getenv('SFX_DEMO') != null) {
+                systemProperty 'sfx.demo', 'true'
+                systemProperty 'sfx.demo.tab', System.getenv('SFX_DEMO_TAB') ?: '0'
+            }
+        }
+        server { server() }
+    }
+
+    mods {
+        sablefix {
+            sourceSet sourceSets.main
+        }
+    }
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
