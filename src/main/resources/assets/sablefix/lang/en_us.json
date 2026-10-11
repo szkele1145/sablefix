@@ -48,7 +48,7 @@
   "sablefix.panel.log_scrolled": " · scrolled up %s lines",
   "sablefix.panel.log_hint": "Scroll back down to reset",
   "sablefix.panel.about_qq": "Feedback QQ group 1129543042",
-  "sablefix.panel.about_ver": "Sable Fix Core v1.7.0 — Sable save self-healing & diagnostics",
+  "sablefix.panel.about_ver": "Sable Fix Core v1.8.0 — Sable save self-healing & diagnostics",
   "sablefix.panel.about_what": "What it does",
   "sablefix.panel.about_what1": "Sable (Aeronautics) ships and airships live in separate sublevel files.",
   "sablefix.panel.about_what2": "Corrupted pointers there fail silently — structures just vanish;",
@@ -139,5 +139,13 @@
   "sablefix.cmd.repair_slots_word": "dead slot(s)",
   "sablefix.cmd.repair_all_dry_hint": "Dry summary only. Confirm with /sablefix repair-all apply",
   "sablefix.cmd.repair_all_done": "Repair-all done: %s file(s) ok, %s failed, %s slot(s) cleared",
-  "sablefix.cmd.repair_backup_in": "Backups in: %s"
+  "sablefix.cmd.repair_backup_in": "Backups in: %s",
+  "sablefix.cmd.help_purge": "clear force-load tickets (dry preview / apply with auto backup, stop server first)",
+  "sablefix.cmd.purge_zero": "Ticket file already empty (0 tickets)",
+  "sablefix.cmd.purge_plan": "Purge plan: clear %s force-load ticket(s) — all other NBT fields kept as-is",
+  "sablefix.cmd.purge_dry_hint": "Dry preview only. Confirm with /sablefix tickets-purge apply (auto-backup)",
+  "sablefix.cmd.purge_done": "✓ Cleared %s ticket(s). Original backed up to %s",
+  "sablefix.cmd.purge_restart_hint": "Takes effect next server start (in-memory tickets untouched). Stop the server first if the file is locked.",
+  "sablefix.cmd.purge_locked": "Ticket file is locked (server running). Stop the server, then apply.",
+  "sablefix.cmd.purge_fail": "Purge failed: %s"
 }

@@ -22,13 +22,19 @@ public final class ClientSetup {
 
     @SubscribeEvent
     public static void onClientTick(net.neoforged.neoforge.client.event.ClientTickEvent.Post event) {
-        // 演示模式：200 tick 后自动打开面板（截图/录屏用，仅 -Dsfx.demo=true 生效）
-        if (!Boolean.getBoolean("sfx.demo")) return;
+        // 演示模式：200 tick 后自动打开面板（截图/录屏用）。
+        // 开关二选一：JVM 系统属性 -Dsfx.demo=true 或环境变量 SFX_DEMO=1
+        if (!isDemo()) return;
         demoTicks++;
         if (demoTicks == 200) {
             Minecraft mc = Minecraft.getInstance();
             if (mc.screen == null) mc.setScreen(new SfxPanelScreen());
         }
+    }
+
+    /** 演示模式开关：系统属性 sfx.demo 或环境变量 SFX_DEMO。 */
+    static boolean isDemo() {
+        return Boolean.getBoolean("sfx.demo") || "1".equals(System.getenv("SFX_DEMO"));
     }
 
     private static int demoTicks;

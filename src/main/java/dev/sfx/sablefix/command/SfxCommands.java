@@ -7,6 +7,7 @@ import com.mojang.brigadier.suggestion.SuggestionsBuilder;
 import dev.sfx.sablefix.SableFixMod;
 import dev.sfx.sablefix.scan.SubLevelRepair;
 import dev.sfx.sablefix.scan.SubLevelScan;
+import dev.sfx.sablefix.scan.TicketPurge;
 import dev.sfx.sablefix.scan.TicketScan;
 import dev.sfx.sablefix.watchdog.ThreadWatchdog;
 import net.minecraft.commands.CommandSourceStack;
@@ -54,7 +55,10 @@ public final class SfxCommands {
                                         StringArgumentType.getString(c, "file"), true)))))
                 .then(Commands.literal("repair-all")
                         .then(Commands.literal("dry").executes(c -> repairAll(c.getSource(), false)))
-                        .then(Commands.literal("apply").executes(c -> repairAll(c.getSource(), true)))));
+                        .then(Commands.literal("apply").executes(c -> repairAll(c.getSource(), true))))
+                .then(Commands.literal("tickets-purge")
+                        .then(Commands.literal("dry").executes(c -> ticketsPurge(c.getSource(), false)))
+                        .then(Commands.literal("apply").executes(c -> ticketsPurge(c.getSource(), true)))));
     }
 
     /**
@@ -182,6 +186,7 @@ public final class SfxCommands {
         src.sendSuccess(() -> Component.literal("§7/sablefix dump §f— ").append(tr("sablefix.cmd.help_dump")), false);
         src.sendSuccess(() -> Component.literal("§7/sablefix repair <file> dry|apply §f— ").append(tr("sablefix.cmd.help_repair")), false);
         src.sendSuccess(() -> Component.literal("§7/sablefix repair-all dry|apply §f— ").append(tr("sablefix.cmd.help_repair_all")), false);
+        src.sendSuccess(() -> Component.literal("§7/sablefix tickets-purge dry|apply §f— ").append(tr("sablefix.cmd.help_purge")), false);
         src.sendSuccess(() -> Component.literal("§7/sfxpanel §f— ").append(tr("sablefix.cmd.help_panel")), false);
         src.sendSuccess(() -> tr("sablefix.cmd.help_passive"), false);
         src.sendSuccess(() -> tr("sablefix.cmd.help_qq"), false);
@@ -255,6 +260,41 @@ public final class SfxCommands {
     private static int dump(CommandSourceStack src) {
         ThreadWatchdog.dump(-1L);
         src.sendSuccess(() -> tr("sablefix.cmd.dump_ok"), false);
+        return 0;
+    }
+
+    /**
+     * 票据清理：dry = 只报当前条数；apply = 备份 + 清空 tickets 列表（其他字段原样保留）。
+     * 动的是 data/ 下的正式存档文件，所以 apply 提示比 repair 更重（建议停服）。
+     */
+    private static int ticketsPurge(CommandSourceStack src, boolean doApply) {
+        Path tf = TicketScan.ticketFile(src.getServer());
+        try {
+            if (!java.nio.file.Files.exists(tf)) {
+                src.sendSuccess(() -> tr("sablefix.cmd.tickets_none"), false);
+                return 0;
+            }
+            int n = TicketPurge.count(tf);
+            if (n == 0) {
+                src.sendSuccess(() -> tr("sablefix.cmd.purge_zero"), false);
+                return 0;
+            }
+            if (!doApply) {
+                src.sendSuccess(() -> tr("sablefix.cmd.purge_plan", n), false);
+                src.sendSuccess(() -> tr("sablefix.cmd.purge_dry_hint"), false);
+                return 1;
+            }
+            Path backup = TicketPurge.purge(tf);
+            src.sendSuccess(() -> tr("sablefix.cmd.purge_done", n, backup.toString()), false);
+            src.sendSuccess(() -> tr("sablefix.cmd.purge_restart_hint"), false);
+            return 1;
+        } catch (java.nio.file.FileSystemException e) {
+            src.sendFailure(tr("sablefix.cmd.purge_locked", tf.getFileName().toString()));
+            SableFixMod.LOGGER.warn("tickets-purge: file locked", e);
+        } catch (Exception e) {
+            src.sendFailure(tr("sablefix.cmd.purge_fail", e.getMessage()));
+            SableFixMod.LOGGER.error("tickets-purge failed", e);
+        }
         return 0;
     }
 }
