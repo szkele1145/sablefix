@@ -85,7 +85,8 @@ public final class ThreadWatchdog {
     /** 抓一份全线程栈；stallNanos 为 -1 表示手动触发。手动抓栈后重置冷却，避免自动重复抓栈。 */
     public static void dump(long stallNanos) {
         try {
-            Path dir = Path.of("logs", "sablefix");
+            // 锚定游戏运行目录（服务器 CWD 可能有差异，用 MinecraftServer 运行目录兜底）
+            Path dir = resolveDumpDir();
             Files.createDirectories(dir);
             String stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS"));
             Path out = dir.resolve("threaddump-" + stamp + ".txt");
@@ -109,6 +110,20 @@ public final class ThreadWatchdog {
         } catch (IOException ex) {
             SableFixMod.LOGGER.error("写线程栈失败", ex);
         }
+    }
+
+    /** 锚定日志目录：<游戏运行目录>/logs/sablefix。优先 JVM user.dir（服务器启动目录），失败退回 CWD。 */
+    private static Path resolveDumpDir() {
+        try {
+            return Path.of(System.getProperty("user.dir"), "logs", "sablefix");
+        } catch (Exception e) {
+            return Path.of("logs", "sablefix");
+        }
+    }
+
+    /** 锚定日志目录（供 ModLog 面板显示与命令提示复用） */
+    public static String dumpDirName() {
+        return "logs/sablefix/";
     }
 
     /** 把 ModLog 依赖收进内部 holder，便于隔离与测试 */

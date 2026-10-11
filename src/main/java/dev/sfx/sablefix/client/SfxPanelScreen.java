@@ -224,6 +224,12 @@ public class SfxPanelScreen extends Screen {
             logScroll = Math.max(0, logScroll - dy * 3);
             return true;
         }
+        if (tab == 4) {
+            int rowsBottom = height - 44;   // 近似 clamp（与 pageWatch rowsBottom 对应）
+            int max = Math.max(0, ticketContentBottom - rowsBottom);
+            ticketScroll = Math.max(0, Math.min(max, ticketScroll - (int) (dy * 24)));
+            return true;
+        }
         if (tab == 2) {
             // 上限 = 内容底 - 可视底（render 时记录 browseContentBottom）
             int px = SIDE_X + SIDE_W + 10, py = 30;
@@ -687,20 +693,49 @@ public class SfxPanelScreen extends Screen {
         infoRow(g, x, w, cy2 + 64, L("sablefix.panel.watch_manual"), "/sablefix dump", a);
 
         roundRect(g, x, ty, w, tickH, 10, CARD, BORDER | a);
+        // 聚合统计：同 UUID 计数 + 唯一数
+        var all = data.ticketUuids();
+        var counts = new java.util.LinkedHashMap<String, Integer>();
+        for (String u : all) counts.merge(u, 1, Integer::sum);
+        int total = all.size(), unique = counts.size();
         g.drawString(font, L("sablefix.panel.ticket_uuids"), x + 12, ty + 8, withA(DIM, a), false);
-        int iy = ty + 22;
-        if (data.ticketUuids().isEmpty()) {
+        g.drawString(font, L("sablefix.panel.tickets_stats", total, unique), x + w - 12 - font.width(L("sablefix.panel.tickets_stats", total, unique)), ty + 8, withA(ACC, a), false);
+
+        // 行区滚动（复用 aboutScroll 的裁剪模式）
+        int rowsTop = ty + 20;
+        int rowsBottom = ty + tickH - 6;
+        g.enableScissor(x + 1, rowsTop, x + w - 1, rowsBottom);
+        int iy = rowsTop - ticketScroll;
+        ticketContentBottom = rowsTop;
+        if (unique == 0) {
             g.drawString(font, L("sablefix.panel.tickets_empty"), x + 12, iy, withA(FAINT, a), false);
+            ticketContentBottom += 16;
         } else {
-            for (String u : data.ticketUuids()) {
-                if (iy + 16 > ty + tickH - 6) break;
-                roundRect(g, x + 8, iy - 4, w - 16, 18, 6, 0x0A58A6FF, 0);
-                dot(g, x + 18, iy + 4, 3, withA(ACC, a));
-                dtr(g, u, x + 28, iy, w - 44, withA(TEXT, a), false);
+            for (var e : counts.entrySet()) {
+                if (iy + 16 > rowsTop) {
+                    if (iy < rowsBottom) {
+                        boolean dup = e.getValue() > 1;
+                        roundRect(g, x + 8, iy - 4, w - 16, 18, 6, 0x0A58A6FF, 0);
+                        dot(g, x + 18, iy + 4, 3, withA(dup ? WARN : ACC, a));
+                        dtr(g, e.getKey(), x + 28, iy, w - 92, withA(TEXT, a), false);
+                        String cnt = "×" + e.getValue();
+                        g.drawString(font, cnt, x + w - 46, iy, withA(dup ? WARN : FAINT, a), false);
+                    }
+                }
                 iy += 22;
+                ticketContentBottom += 22;
             }
         }
+        g.disableScissor();
+        int maxScroll = Math.max(0, ticketContentBottom - rowsBottom);
+        if (maxScroll > 0) {
+            String hint = ticketScroll <= 0 ? "↓" : (ticketScroll >= maxScroll ? "↑" : "↑↓");
+            g.drawString(font, hint, x + w - font.width(hint) - 10, ty + tickH - 13, withA(FAINT, a), false);
+        }
     }
+
+    private int ticketScroll;
+    private int ticketContentBottom;
 
     // ================= 绘图工具（实现在 ui.Widgets / ui.Theme，此处仅转调） =================
     private static void dtr(GuiGraphics g, String s, int x, int y, int maxW, int color, boolean shadow) {
