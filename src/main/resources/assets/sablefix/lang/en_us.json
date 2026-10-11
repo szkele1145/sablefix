@@ -48,7 +48,7 @@
   "sablefix.panel.log_scrolled": " · scrolled up %s lines",
   "sablefix.panel.log_hint": "Scroll back down to reset",
   "sablefix.panel.about_qq": "Feedback QQ group 1129543042",
-  "sablefix.panel.about_ver": "Sable Fix Core v1.2.0 — Sable save self-healing & diagnostics",
+  "sablefix.panel.about_ver": "Sable Fix Core v1.3.0 — Sable save self-healing & diagnostics",
   "sablefix.panel.about_what": "What it does",
   "sablefix.panel.about_what1": "Sable (Aeronautics) ships and airships live in separate sublevel files.",
   "sablefix.panel.about_what2": "Corrupted pointers there fail silently — structures just vanish;",
@@ -119,5 +119,9 @@
   "sablefix.cmd.repair_done": "✓ Cleared %s slot(s). Original backed up to %s",
   "sablefix.cmd.repair_restart_hint": "Takes effect when the sublevel loads next start. Stop the server first if the file is locked.",
   "sablefix.cmd.repair_locked": "%s is locked (Sable holds a handle while running). Stop the server, then apply.",
-  "sablefix.cmd.repair_fail": "Repair %s failed: %s"
+  "sablefix.cmd.repair_fail": "Repair %s failed: %s",
+  "sablefix.panel.repair_btn": "Fix",
+  "sablefix.panel.repair_confirm": "Confirm",
+  "sablefix.panel.repair_plan_gui": "Dry run: %s dead slot(s) to clear [%s] — click Confirm again to apply (auto-backup)",
+  "sablefix.panel.repair_done_gui": "✓ Repaired: %s slot(s) cleared, list refreshed (details in chat)"
 }

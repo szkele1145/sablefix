@@ -128,9 +128,14 @@ public class SfxPanelScreen extends Screen {
         tab = t;
         animStart = Util.getMillis();
         setBoxVisible();
+        repairConfirmFile = null;
+        repairDryFile = null;
+        if (t != 1) repairMsg = null;
     }
 
     private void request() {
+        repairConfirmFile = null;
+        repairDryFile = null;
         PacketDistributor.sendToServer(new NetHandler.PanelReq());
     }
 
@@ -159,6 +164,15 @@ public class SfxPanelScreen extends Screen {
         if (inBox(mx, my, width - 146, 6, 66, 16)) { request(); return true; }
         if (inBox(mx, my, width - 74, 6, 66, 16)) { onClose(); return true; }
         if (tab == 3 && inBox(mx, my, diagBtnX, diagBtnY, 46, 18)) { doDiag(); return true; }
+        // 体检页：修复按钮（第一次=dry 预览，同文件再点=确认 apply）
+        if (tab == 1) {
+            for (RepairBtn b : repairBtns) {
+                if (inBox(mx, my, b.x(), b.y(), 58, 18)) {
+                    data.files().stream().filter(f -> f.name().equals(b.file())).findFirst().ifPresent(this::clickRepair);
+                    return true;
+                }
+            }
+        }
         // About 页：Telegram 横幅 → 复制链接
         if (tab == 6 && tgBtnW > 0 && inBox(mx, my, tgBtnX, tgBtnY, tgBtnW, tgBtnH)) {
             Minecraft.getInstance().keyboardHandler.setClipboard(SableFixMod.TG_URL);
@@ -364,16 +378,26 @@ public class SfxPanelScreen extends Screen {
         banner(g, x, y + 16, w, 26, issues == 0,
                 issues == 0 ? L("sablefix.panel.health_ok") : L("sablefix.panel.health_issues", issues), a);
 
-        int ly = y + 50;
+        // 修复结果横幅（apply/dry 返回后显示，直到切页或刷新）
+        int by = y + 48;
+        if (repairMsg != null) {
+            boolean good = repairMsgOk;
+            roundRect(g, x, by, w, 22, 8, good ? 0x144EC97F : 0x14E05D5D, withA(good ? OK : BAD, a));
+            dtr(g, repairMsg, x + 12, by + 7, w - 24, withA(good ? OK : BAD, a), false);
+        }
+
+        int ly = y + (repairMsg != null ? 76 : 50);
         int cardH = h - (ly - y) - 4;
         if (cardH < 30) return;
         roundRect(g, x, ly, w, cardH, 10, CARD, BORDER | a);
         g.drawString(font, L("sablefix.panel.bad_files"), x + 12, ly + 8, withA(DIM, a), false);
 
-        // 列位置按实际宽度比例分布（防窄窗口反超/超框）
-        int typeX = x + w - 130, deadX = x + w - 92, sizeX = x + w - 52;
+        // 列位置：为右侧修复按钮留 58px
+        int btnX = x + w - 66;
+        int typeX = x + w - 172, deadX = x + w - 134, sizeX = x + w - 94;
         int nameMax = typeX - (x + 28) - 8;
         int iy = ly + 22;
+        repairBtns.clear();
         int shown = 0;
         for (NetHandler.PanelData.FileRow f : data.files()) {
             if (f.dead() <= 0) continue;
@@ -385,12 +409,66 @@ public class SfxPanelScreen extends Screen {
             dtr(g, f.slvlr() ? "slvlr" : "slvls", typeX, iy, 56, withA(FAINT, a), false);
             dtr(g, "×" + f.dead(), deadX, iy, 36, withA(BAD, a), false);
             dtr(g, fmtSize(f.size()), sizeX, iy, 48, withA(DIM, a), false);
+            // 修复按钮：该文件处于确认态时变红显示「确认清零」
+            boolean confirm = f.name().equals(repairConfirmFile);
+            boolean hov = inBox(mx, my, btnX, iy - 4, 58, 18);
+            int bfill = confirm ? (hov ? 0x66E05D5D : 0x40E05D5D) : (hov ? 0x3F7DBAFF : 0x227DBAFF);
+            roundRect(g, btnX, iy - 4, 58, 18, 6, bfill, withA(confirm ? BAD : ACC, a));
+            String bl = L(confirm ? "sablefix.panel.repair_confirm" : "sablefix.panel.repair_btn");
+            int bw = font.width(bl);
+            if (bw <= 54) {
+                g.drawString(font, bl, btnX + (58 - bw) / 2, iy + 1, withA(confirm ? BAD : TEXT, a), false);
+            } else {
+                dtr(g, bl, btnX + 4, iy + 1, 50, withA(confirm ? BAD : TEXT, a), false);
+            }
+            repairBtns.add(new RepairBtn(f.name(), btnX, iy - 4));
             iy += 24;
         }
         if (shown == 0) {
             g.drawString(font, L("sablefix.panel.no_fix_needed"), x + 12, iy, withA(OK, a), false);
         }
         g.drawString(font, L("sablefix.panel.readonly_note"), x + 12, ly + cardH - 14, withA(FAINT, a), false);
+    }
+
+    // ---- 修复交互状态 ----
+    private record RepairBtn(String file, int x, int y) {}
+    private final java.util.List<RepairBtn> repairBtns = new java.util.ArrayList<>();
+    private String repairConfirmFile;   // 待确认（第一次点=发 dry 预览，第二次点同一文件=apply）
+    private String repairMsg;
+    private boolean repairMsgOk;
+    private String repairDryFile;       // dry 预览对应的文件名（确认目标）
+
+    public void onRepairRes(NetHandler.RepairRes r) {
+        if (!r.ok()) {
+            repairMsg = L(r.errKey(), r.errArg() == null || r.errArg().isEmpty() ? "" : r.errArg());
+            repairMsgOk = false;
+            repairConfirmFile = null;
+            return;
+        }
+        if (!r.applied()) {
+            // dry：显示计划，进入确认态
+            repairDryFile = r.file();
+            repairConfirmFile = r.file();
+            repairMsg = L("sablefix.panel.repair_plan_gui", r.slots(), r.preview());
+            repairMsgOk = true;
+        } else {
+            repairConfirmFile = null;
+            repairDryFile = null;
+            repairMsg = L("sablefix.panel.repair_done_gui", r.slots());
+            repairMsgOk = true;
+            var p = Minecraft.getInstance().player;
+            if (p != null)
+                p.displayClientMessage(Component.translatable("sablefix.cmd.repair_done", r.slots(), r.backup()), false);
+        }
+        request();   // 重扫刷新列表
+    }
+
+    private void clickRepair(NetHandler.PanelData.FileRow f) {
+        if (f.name().equals(repairConfirmFile) && f.name().equals(repairDryFile)) {
+            PacketDistributor.sendToServer(new NetHandler.RepairReq(f.name(), true));   // 二次确认 → apply
+        } else {
+            PacketDistributor.sendToServer(new NetHandler.RepairReq(f.name(), false));  // 第一次 → dry
+        }
     }
 
     // ---- 浏览 ----

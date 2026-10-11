@@ -53,6 +53,10 @@ public final class ClientSetup {
             SfxPanelScreen s = openScreen;
             if (s != null) s.onDiag(res);
         });
+        ClientBridge.setRepairSink(res -> {
+            SfxPanelScreen s = openScreen;
+            if (s != null) s.onRepairRes(res);
+        });
     }
 
     /** 面板关闭时由 SfxPanelScreen 调用：释放静态引用，避免持有最后一帧数据无法回收。 */

@@ -23,6 +23,10 @@ public final class NetHandler {
                 ctx.enqueueWork(() -> ServerHandlers.onDiagReq(p, ctx)));
         reg.playToClient(DiagRes.TYPE, DiagRes.CODEC, (p, ctx) ->
                 ctx.enqueueWork(() -> ClientBridge.onDiagRes(p)));
+        reg.playToServer(RepairReq.TYPE, RepairReq.CODEC, (p, ctx) ->
+                ctx.enqueueWork(() -> ServerHandlers.onRepairReq(p, ctx)));
+        reg.playToClient(RepairRes.TYPE, RepairRes.CODEC, (p, ctx) ->
+                ctx.enqueueWork(() -> ClientBridge.onRepairRes(p)));
         SableFixMod.LOGGER.info("网络通道已注册");
     }
 
@@ -62,6 +66,28 @@ public final class NetHandler {
         public static final StreamCodec<FriendlyByteBuf, DiagReq> CODEC = StreamCodec.of(
                 (b, p) -> { b.writeVarInt(p.x); b.writeVarInt(p.z); },
                 b -> new DiagReq(b.readVarInt(), b.readVarInt()));
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    /** C2S：修复请求。apply=false 为 dry 预览（只回计划），true = 备份+清零。 */
+    public record RepairReq(String file, boolean apply) implements CustomPacketPayload {
+        public static final Type<RepairReq> TYPE = new Type<>(id("repair_req"));
+        public static final StreamCodec<FriendlyByteBuf, RepairReq> CODEC = StreamCodec.of(
+                (b, p) -> { b.writeUtf(p.file(), 128); b.writeBoolean(p.apply); },
+                b -> new RepairReq(b.readUtf(128), b.readBoolean()));
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    /** S2C：修复结果。ok=false 时 errKey 为 lang key（errArg 可空）；dry 时 slots=死槽数、preview=前 20 个槽号。 */
+    public record RepairRes(boolean ok, boolean applied, String file, int slots, String preview,
+                            String backup, String errKey, String errArg) implements CustomPacketPayload {
+        public static final Type<RepairRes> TYPE = new Type<>(id("repair_res"));
+        public static final StreamCodec<FriendlyByteBuf, RepairRes> CODEC = StreamCodec.of(
+                (b, p) -> { b.writeBoolean(p.ok); b.writeBoolean(p.applied); b.writeUtf(p.file, 128);
+                        b.writeVarInt(p.slots); b.writeUtf(p.preview, 256); b.writeUtf(p.backup, 256);
+                        b.writeUtf(p.errKey, 64); b.writeUtf(p.errArg, 128); },
+                b -> new RepairRes(b.readBoolean(), b.readBoolean(), b.readUtf(128), b.readVarInt(),
+                        b.readUtf(256), b.readUtf(256), b.readUtf(64), b.readUtf(128)));
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 

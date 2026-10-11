@@ -1,6 +1,7 @@
 package dev.sfx.sablefix.net;
 
 import dev.sfx.sablefix.SableFixMod;
+import dev.sfx.sablefix.scan.SubLevelRepair;
 import dev.sfx.sablefix.scan.SubLevelScan;
 import dev.sfx.sablefix.scan.TicketScan;
 import dev.sfx.sablefix.watchdog.ThreadWatchdog;
@@ -128,6 +129,52 @@ public final class ServerHandlers {
             SableFixMod.LOGGER.warn("面板读票据失败", e);
         }
         return new CachedScan(report, uuids, ticketCount, System.currentTimeMillis());
+    }
+
+    /** GUI 修复请求：dry 预览 / apply 备份+清零。全部主线程执行（文件小、耗时毫秒级）。 */
+    public static void onRepairReq(NetHandler.RepairReq req, IPayloadContext ctx) {
+        if (!(ctx.player() instanceof ServerPlayer player)) return;
+        if (!player.hasPermissions(2)) {
+            ctx.reply(new NetHandler.RepairRes(false, req.apply(), req.file(), 0, "", "",
+                    "sablefix.perm.denied", ""));
+            return;
+        }
+        try {
+            MinecraftServer server = player.getServer();
+            Path dir = worldDir(server).resolve("sublevels");
+            Path target = dir.resolve(req.file()).normalize();
+            if (!target.startsWith(dir) || !Files.exists(target)) {
+                ctx.reply(new NetHandler.RepairRes(false, req.apply(), req.file(), 0, "", "",
+                        "sablefix.cmd.repair_no_file", req.file()));
+                return;
+            }
+            SubLevelRepair.RepairPlan plan = SubLevelRepair.plan(target);
+            if (plan.isEmpty()) {
+                ctx.reply(new NetHandler.RepairRes(true, false, req.file(), 0, "", "",
+                        "sablefix.cmd.repair_nothing", req.file()));
+                return;
+            }
+            if (!req.apply()) {
+                String preview = plan.slots().stream().map(String::valueOf)
+                        .limit(20).collect(java.util.stream.Collectors.joining(", "))
+                        + (plan.slots().size() > 20 ? " …" : "");
+                ctx.reply(new NetHandler.RepairRes(true, false, req.file(), plan.slots().size(), preview, "", "", ""));
+                return;
+            }
+            SubLevelRepair.RepairResult res = SubLevelRepair.apply(plan);
+            SCAN_CACHE.set(null);   // 修复后缓存作废，下次面板请求重扫
+            ctx.reply(new NetHandler.RepairRes(true, true, req.file(), res.cleared(), "",
+                    res.backup().toString(), "", ""));
+            dev.sfx.sablefix.log.ModLog.warn("面板修复：" + req.file() + " 清零 " + res.cleared()
+                    + " 槽（备份 " + res.backup() + "）");
+        } catch (java.nio.file.FileSystemException e) {
+            ctx.reply(new NetHandler.RepairRes(false, true, req.file(), 0, "", "",
+                    "sablefix.cmd.repair_locked", req.file()));
+        } catch (Exception e) {
+            SableFixMod.LOGGER.error("panel repair failed: {}", req.file(), e);
+            ctx.reply(new NetHandler.RepairRes(false, req.apply(), req.file(), 0, "", "",
+                    "sablefix.cmd.repair_fail", req.file() + ": " + e.getMessage()));
+        }
     }
 
     public static void onDiagReq(NetHandler.DiagReq req, IPayloadContext ctx) {
