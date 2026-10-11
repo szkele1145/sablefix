@@ -173,6 +173,18 @@ public class SfxPanelScreen extends Screen {
                 }
             }
         }
+        // 浏览页：过滤/排序 chips
+        if (tab == 2 && my >= 0) {
+            int px = SIDE_X + SIDE_W + 10, py = 30;
+            int pw = width - px - 10, ph = height - 38;
+            int fy = py + 16;
+            if (my >= fy && my < fy + 18) {
+                int beforeF = browseFilter, beforeS = browseSort;
+                boolean beforeD = browseSortDesc;
+                cycleBrowseFilter(mx, px, fy + 1, pw);
+                if (browseFilter != beforeF || browseSort != beforeS || browseSortDesc != beforeD) return true;
+            }
+        }
         // About 页：Telegram 横幅 → 复制链接
         if (tab == 6 && tgBtnW > 0 && inBox(mx, my, tgBtnX, tgBtnY, tgBtnW, tgBtnH)) {
             Minecraft.getInstance().keyboardHandler.setClipboard(SableFixMod.TG_URL);
@@ -197,6 +209,15 @@ public class SfxPanelScreen extends Screen {
     public boolean mouseScrolled(double mx, double my, double dx, double dy) {
         if (tab == 5) {
             logScroll = Math.max(0, logScroll - dy * 3);
+            return true;
+        }
+        if (tab == 2) {
+            // 上限 = 内容底 - 可视底（render 时记录 browseContentBottom）
+            int px = SIDE_X + SIDE_W + 10, py = 30;
+            int h = height - 38;
+            int rowsBottom = py + 42 + (h - 42) - 10;   // 与 pageBrowse 的 rowsBottom 对应（近似 clamp 即可）
+            int max = Math.max(0, browseContentBottom - rowsBottom);
+            browseScroll = Math.max(0, Math.min(max, browseScroll - (int) (dy * 24)));
             return true;
         }
         if (tab == 6) {
@@ -472,34 +493,126 @@ public class SfxPanelScreen extends Screen {
     }
 
     // ---- 浏览 ----
+    private static final int FILTER_ALL = 0, FILTER_BAD = 1, FILTER_OK = 2;
+    private static final int SORT_NAME = 0, SORT_SIZE = 1, SORT_DEAD = 2;
+    private int browseFilter = FILTER_ALL;
+    private int browseSort = SORT_NAME;
+    private boolean browseSortDesc = true;
+    private int browseScroll;
+    private int browseContentBottom;   // 渲染时记录，滚动上限
+    private final java.util.List<int[]> browseHitRows = new java.util.ArrayList<>(); // [y, h] 每行（表头点击用不到，预留）
+
+    private java.util.stream.Stream<NetHandler.PanelData.FileRow> browseStream() {
+        java.util.stream.Stream<NetHandler.PanelData.FileRow> s = data.files().stream();
+        if (browseFilter == FILTER_BAD) s = s.filter(f -> f.dead() > 0);
+        if (browseFilter == FILTER_OK) s = s.filter(f -> f.dead() <= 0 && f.size() >= 0);
+        java.util.Comparator<NetHandler.PanelData.FileRow> c = switch (browseSort) {
+            case SORT_SIZE -> java.util.Comparator.comparingLong(NetHandler.PanelData.FileRow::size);
+            case SORT_DEAD -> java.util.Comparator.comparingInt(NetHandler.PanelData.FileRow::dead);
+            default -> java.util.Comparator.comparing(NetHandler.PanelData.FileRow::name, String.CASE_INSENSITIVE_ORDER);
+        };
+        if (browseSortDesc) c = c.reversed();
+        return s.sorted(c);
+    }
+
+    private void cycleBrowseFilter(double mx, int x, int ly, int w) {
+        // 三个过滤 chip：全部 / 异常 / 健康
+        int cx = x + 12;
+        for (int i = 0; i < 3; i++) {
+            int cw = 54;
+            if (inBox(mx, ly - 1, cx, 0, cw, 18)) {
+                browseFilter = i;
+                browseScroll = 0;
+                return;
+            }
+            cx += cw + 6;
+        }
+        // 排序 chip：名称 / 大小 / 死槽数
+        int sx = x + w - 12 - (54 * 3 + 12);
+        for (int i = 0; i < 3; i++) {
+            int cw = 54;
+            if (inBox(mx, ly - 1, sx + i * (cw + 6), 0, cw, 18)) {
+                if (browseSort == i) browseSortDesc = !browseSortDesc; else browseSort = i;
+                browseScroll = 0;
+                return;
+            }
+        }
+    }
+
     private void pageBrowse(GuiGraphics g, int x, int y, int w, int h, int mx, int my, int a) {
         if (data == null) { loadingCard(g, x, y, a); return; }
         title(g, x, y, L("sablefix.panel.tab.browse"), a);
-        int ly = y + 16;
+
+        // 过滤 chips 行（y+16）
+        int fy = y + 16;
+        String[] fLabels = { L("sablefix.panel.filter_all"), L("sablefix.panel.filter_bad"), L("sablefix.panel.filter_ok") };
+        int cx = x + 12;
+        for (int i = 0; i < 3; i++) {
+            boolean sel = browseFilter == i;
+            boolean hov = inBox(mx, my, cx, fy, 54, 18);
+            roundRect(g, cx, fy, 54, 18, 6, sel ? 0x3F7DBAFF : (hov ? 0x22FFFFFF : 0x12FFFFFF),
+                    sel ? withA(ACC, a) : 0);
+            String fl = fLabels[i];
+            g.drawString(font, fl, cx + (54 - font.width(fl)) / 2, fy + 5, withA(sel ? TEXT : DIM, a), false);
+            cx += 60;
+        }
+        // 排序 chips（右侧）：点击循环 升/降
+        String[] sLabels = { L("sablefix.panel.sort_name"), L("sablefix.panel.sort_size"), L("sablefix.panel.sort_dead") };
+        int sx = x + w - 12 - (54 * 3 + 12);
+        for (int i = 0; i < 3; i++) {
+            int cxx = sx + i * 60;
+            boolean sel = browseSort == i;
+            boolean hov = inBox(mx, my, cxx, fy, 54, 18);
+            roundRect(g, cxx, fy, 54, 18, 6, sel ? 0x2A7DBAFF : (hov ? 0x22FFFFFF : 0x12FFFFFF),
+                    sel ? withA(ACC, a) : 0);
+            String sl = sLabels[i] + (sel ? (browseSortDesc ? " ↓" : " ↑") : "");
+            g.drawString(font, sl, cxx + (54 - font.width(sl)) / 2, fy + 5, withA(sel ? ACC : DIM, a), false);
+        }
+
+        int ly = fy + 26;
         int cardH = h - (ly - y) - 4;
         if (cardH < 30) return;
         roundRect(g, x, ly, w, cardH, 10, CARD, BORDER | a);
         // 列位置按宽度百分比（防超框）
         int sizeX = x + w * 46 / 100, liveX = x + w * 66 / 100, stX = x + w * 82 / 100;
         int nameMax = sizeX - (x + 16) - 10;
-        g.drawString(font, L("sablefix.panel.col_file"), x + 16, ly + 8, withA(FAINT, a), false);
-        g.drawString(font, L("sablefix.panel.col_size"), sizeX, ly + 8, withA(FAINT, a), false);
-        g.drawString(font, L("sablefix.panel.col_live"), liveX, ly + 8, withA(FAINT, a), false);
-        g.drawString(font, L("sablefix.panel.col_status"), stX, ly + 8, withA(FAINT, a), false);
-        int iy = ly + 22;
+        int hy = ly + 6;
+        g.drawString(font, L("sablefix.panel.col_file"), x + 16, hy, withA(FAINT, a), false);
+        g.drawString(font, L("sablefix.panel.col_size"), sizeX, hy, withA(FAINT, a), false);
+        g.drawString(font, L("sablefix.panel.col_live"), liveX, hy, withA(FAINT, a), false);
+        g.drawString(font, L("sablefix.panel.col_status"), stX, hy, withA(FAINT, a), false);
+
+        // 行区滚动裁剪
+        int rowsTop = ly + 20;
+        int rowsBottom = ly + cardH - 6;
+        g.enableScissor(x + 1, rowsTop, x + w - 1, rowsBottom);
+        int iy = rowsTop - browseScroll;
         int row = 0;
-        for (NetHandler.PanelData.FileRow f : data.files()) {
-            if (iy + 16 > ly + cardH - 6) break;
-            if (row % 2 == 0) roundRect(g, x + 8, iy - 4, w - 16, 16, 5, 0x0AFFFFFF, 0);
-            boolean bad = f.dead() > 0;
-            dtr(g, f.name(), x + 16, iy, nameMax, withA(bad ? BAD : (f.size() < 0 ? FAINT : TEXT), a), false);
-            if (f.size() >= 0) {
-                dtr(g, fmtSize(f.size()), sizeX, iy, liveX - sizeX - 8, withA(DIM, a), false);
-                if (f.live() >= 0) dtr(g, String.valueOf(f.live()), liveX, iy, stX - liveX - 8, withA(DIM, a), false);
-                dtr(g, L(bad ? "sablefix.panel.status_bad" : "sablefix.panel.status_ok"), stX, iy, w - (stX - x) - 16, withA(bad ? BAD : OK, a), false);
+        browseContentBottom = rowsTop;
+        var list = browseStream().toList();
+        for (NetHandler.PanelData.FileRow f : list) {
+            if (iy + 16 > rowsTop) {   // 只画可见区
+                if (iy < rowsBottom) {
+                    if (row % 2 == 0) roundRect(g, x + 8, iy - 4, w - 16, 16, 5, 0x0AFFFFFF, 0);
+                    boolean bad = f.dead() > 0;
+                    dtr(g, f.name(), x + 16, iy, nameMax, withA(bad ? BAD : (f.size() < 0 ? FAINT : TEXT), a), false);
+                    if (f.size() >= 0) {
+                        dtr(g, fmtSize(f.size()), sizeX, iy, liveX - sizeX - 8, withA(DIM, a), false);
+                        if (f.live() >= 0) dtr(g, String.valueOf(f.live()), liveX, iy, stX - liveX - 8, withA(DIM, a), false);
+                        dtr(g, L(bad ? "sablefix.panel.status_bad" : "sablefix.panel.status_ok"), stX, iy, w - (stX - x) - 16, withA(bad ? BAD : OK, a), false);
+                    }
+                }
             }
             iy += 16;
             row++;
+            browseContentBottom += 16;
+        }
+        g.disableScissor();
+        // 溢出提示
+        int maxScroll = Math.max(0, browseContentBottom - rowsBottom);
+        if (maxScroll > 0) {
+            String hint = browseScroll <= 0 ? "↓" : (browseScroll >= maxScroll ? "↑" : "↑↓");
+            g.drawString(font, hint, x + w - font.width(hint) - 10, ly + cardH - 13, withA(FAINT, a), false);
         }
     }
 
