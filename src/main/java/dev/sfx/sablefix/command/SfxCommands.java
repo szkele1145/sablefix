@@ -144,8 +144,19 @@ public final class SfxCommands {
             Path dir = src.getServer().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
             Path target = dir.resolve(fileName).normalize();
             if (!target.startsWith(dir) || !java.nio.file.Files.exists(target)) {
-                src.sendFailure(tr("sablefix.cmd.repair_no_file", fileName));
-                return 0;
+                // 大小写容错：遍历目录找忽略大小写的同名文件（玩家手输大小写经常不准）
+                Path found = null;
+                try {
+                    for (java.nio.file.DirectoryStream<Path> ds = java.nio.file.Files.newDirectoryStream(dir); ds.iterator().hasNext();) {
+                        Path cand = ds.iterator().next();
+                        if (cand.getFileName().toString().equalsIgnoreCase(fileName)) { found = cand; break; }
+                    }
+                } catch (Exception ignored) {}
+                if (found == null || !found.normalize().startsWith(dir)) {
+                    src.sendFailure(tr("sablefix.cmd.repair_no_file", fileName));
+                    return 0;
+                }
+                target = found;
             }
             SubLevelRepair.RepairPlan plan = SubLevelRepair.plan(target);
             if (plan.isEmpty()) {
