@@ -23,6 +23,7 @@
 > 下次发版：把上述内容整体打包成 **1.2.0**（功能成套：修复体系完整化 = 大更新），或者按用户指示发 1.1.x。
 
 ## 待办
-- [ ] 实机 runClient 截图冒烟（demo 开关已修，待跑）
+- [ ] **实机截图冒烟（进行中）**：demo 开关已通（-Dsfx.demo=true 直传 gradle → 游戏 JVM），但 demo 只开面板不进存档，面板被主菜单盖住 → 57s 即退。下一步：demo 模式自动 `mc.loadLevel("新的世界")`（现成存档）或 createFreshLevel，进世界后再轮播面板
+- [ ] 1920 全屏下 UI 修复（2x2 卡片堆叠、chips 自适应、TG 横幅缩放、diag resize 重算）已改完 + build 绿，**待实机复查**（同样依赖上面的自动进存档）
 - [ ] 票据清理 GUI 按钮
-- [ ] 攒批发版时：更新三处版本号（bump_version.js）→ Modrinth + GitHub 同步
+- [ ] 攒批发版：main 上已有 1.8.0 内容（tickets-purge + 后台扫描 + UUID 聚合 + repair-all + 本轮 UI 修复），按新版本纪律打包成 1.2.0（用户指示：不要碎更）

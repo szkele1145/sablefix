@@ -20,14 +20,20 @@ neoForge {
     runs {
         client {
             client()
-            if (System.getenv('SFX_DEMO') != null) {
+            // demo 开关：-Dsfx.demo=true（gradle 命令行）或环境变量 SFX_DEMO=1 均可触发；
+            // tab/窗口尺寸同理（sfx.demo.tab / SFX_W / SFX_H）
+            def demo = System.getProperty('sfx.demo') != null || System.getenv('SFX_DEMO') != null
+            if (demo) {
                 systemProperty 'sfx.demo', 'true'
-                systemProperty 'sfx.demo.tab', System.getenv('SFX_DEMO_TAB') ?: '0'
-                if (System.getenv('SFX_W') != null) {
+                def tab = System.getProperty('sfx.demo.tab') ?: System.getenv('SFX_DEMO_TAB')
+                if (tab != null) systemProperty 'sfx.demo.tab', tab
+                def w = System.getProperty('sfx.w') ?: System.getenv('SFX_W')
+                def h = System.getProperty('sfx.h') ?: System.getenv('SFX_H')
+                if (w != null) {
                     programArgument '--width'
-                    programArgument System.getenv('SFX_W')
+                    programArgument w
                     programArgument '--height'
-                    programArgument (System.getenv('SFX_H') ?: '480')
+                    programArgument (h ?: '480')
                 }
             }
         }

@@ -45,6 +45,7 @@ public class SfxPanelScreen extends Screen {
 
     private EditBox xBox, zBox;
     private int diagBtnX, diagBtnY, diagBoxW;  // 诊断页控件位置（init 时按窗口算好，绘制/命中共用）
+    private int diagIx;                        // 输入框起始 x（resize 重算用）
 
     public SfxPanelScreen() {
         super(Component.translatable("sablefix.panel.title"));
@@ -84,24 +85,18 @@ public class SfxPanelScreen extends Screen {
     // ================= 初始化 =================
     @Override
     protected void init() {
+        layoutDiag();
         // 导航/按钮全自绘（见 mouseClicked / drawSide），这里只放诊断页输入框
-        // 布局：标题 34..42 → 输入行 44..60 → 结果卡片从 68 起（互不重叠）
-        int ix = SIDE_X + SIDE_W + 20;
-        int avail = width - ix - 12;              // 输入行可用宽
-        int bw = 46;                               // 诊断按钮宽
-        diagBoxW = Math.max(40, Math.min(88, (avail - bw - 24) / 2));
-        diagBtnX = Math.min(ix + diagBoxW * 2 + 24, width - bw - 10);
-        diagBtnY = 43;
-        xBox = new EditBox(font, ix, 44, diagBoxW, 16, Component.literal("X"));
+        xBox = new EditBox(font, diagIx, 44, diagBoxW, 16, Component.literal("X"));
         xBox.setMaxLength(12);
         styleBox(xBox);
-        zBox = new EditBox(font, ix + diagBoxW + 12, 44, diagBoxW, 16, Component.literal("Z"));
+        zBox = new EditBox(font, diagIx + diagBoxW + 12, 44, diagBoxW, 16, Component.literal("Z"));
         zBox.setMaxLength(12);
         styleBox(zBox);
         addRenderableWidget(xBox);
         addRenderableWidget(zBox);
 
-        if (Boolean.getBoolean("sfx.demo")) {
+        if (ClientSetup.isDemo()) {
             if (data == null) data = demoData();
             if (diagRes == null) diagRes = demoDiag();
             tab = Integer.getInteger("sfx.demo.tab", 0);
@@ -109,6 +104,28 @@ public class SfxPanelScreen extends Screen {
             request();
         }
         setBoxVisible();
+    }
+
+    /** 诊断页布局（resize 时重跑）：输入框位置/宽度、按钮命中区。 */
+    private void layoutDiag() {
+        int ix = SIDE_X + SIDE_W + 20;
+        int avail = width - ix - 12;
+        int bw = 46;
+        diagBoxW = Math.max(40, Math.min(88, (avail - bw - 24) / 2));
+        diagBtnX = Math.min(ix + diagBoxW * 2 + 24, width - bw - 10);
+        diagBtnY = 43;
+        diagIx = ix;
+    }
+
+    @Override
+    public void resize(Minecraft mc, int w, int h) {
+        super.resize(mc, w, h);
+        // init() 已被 super.resize 调用（重建控件），这里只需再同步命中区
+        layoutDiag();
+        xBox.setX(diagIx);
+        zBox.setX(diagIx + diagBoxW + 12);
+        xBox.setWidth(diagBoxW);
+        zBox.setWidth(diagBoxW);
     }
 
     private void styleBox(EditBox b) {
@@ -186,10 +203,10 @@ public class SfxPanelScreen extends Screen {
                 }
             }
         }
-        // 浏览页：过滤/排序 chips
+        // 浏览页：过滤/排序 chips（命中逻辑与 render 的动态宽度保持一致：按 label 实宽推进）
         if (tab == 2 && my >= 0) {
             int px = SIDE_X + SIDE_W + 10, py = 30;
-            int pw = width - px - 10, ph = height - 38;
+            int pw = width - px - 10;
             int fy = py + 16;
             if (my >= fy && my < fy + 18) {
                 int beforeF = browseFilter, beforeS = browseSort;
@@ -378,13 +395,14 @@ public class SfxPanelScreen extends Screen {
             int cw = (w - 10) / 2;
             statCard(g, x, cy, cw, ch, L("sablefix.panel.uptime"), v0, TEXT, 0.95f, a, mx, my);
             statCard(g, x + cw + 10, cy, cw, ch, L("sablefix.panel.tick_gap"), v1, tickOk ? OK : BAD, 0.95f, a, mx, my);
-            statCard(g, x, cy + ch + 8, cw, ch, L("sablefix.panel.dump_count"), v2, data.dumpCount() == 0 ? OK : WARN, 0.95f, a, mx, my);
-            statCard(g, x + cw + 10, cy + ch + 8, cw, ch, L("sablefix.panel.tickets"), v3, c3, 0.95f, a, mx, my);
-            cy += ch + 8;
+            int row2 = cy + ch + 8;
+            statCard(g, x, row2, cw, ch, L("sablefix.panel.dump_count"), v2, data.dumpCount() == 0 ? OK : WARN, 0.95f, a, mx, my);
+            statCard(g, x + cw + 10, row2, cw, ch, L("sablefix.panel.tickets"), v3, c3, 0.95f, a, mx, my);
+            cy = row2;   // 修正：2x2 时第二行卡片底端才是维度表的起点（原来只加一次且漏掉 ch 高度）
         }
 
-        // 维度表卡片
-        int ty = cy + ch + 12;
+        // 维度表卡片（2x2 分支下 cy 已指向第二行卡片顶端，再降一行）
+        int ty = (w >= 420 ? cy : cy + ch) + 12;
         int rowH = 15;
         int th = 22 + data.dims().size() * rowH + 6;
         roundRect(g, x, ty, w, th, 10, CARD, BORDER | a);
@@ -537,22 +555,41 @@ public class SfxPanelScreen extends Screen {
     }
 
     private void cycleBrowseFilter(double mx, int x, int ly, int w) {
-        // 三个过滤 chip：全部 / 异常 / 健康
+        // 与 render 同款动态宽度：label 实宽 + padding，命中才准确
+        String[] fLabels = { L("sablefix.panel.filter_all"), L("sablefix.panel.filter_bad"), L("sablefix.panel.filter_ok") };
+        String[] sLabels = { L("sablefix.panel.sort_name"), L("sablefix.panel.sort_size"), L("sablefix.panel.sort_dead") };
+        int fTotal = 0, sTotal = 0;
+        for (String s : fLabels) fTotal += font.width(s) + 18;
+        for (String s : sLabels) sTotal += font.width(s) + 26;
+        boolean compact = fTotal + 16 + sTotal + 24 > w;
+        int chipGap = 8;
         int cx = x + 12;
         for (int i = 0; i < 3; i++) {
-            int cw = 54;
+            int cw = compact ? 52 : Math.max(52, font.width(fLabels[i]) + 18);
             if (inBox(mx, ly - 1, cx, 0, cw, 18)) {
                 browseFilter = i;
                 browseScroll = 0;
                 return;
             }
-            cx += cw + 6;
+            cx += cw + chipGap;
         }
-        // 排序 chip：名称 / 大小 / 死槽数
-        int sx = x + w - 12 - (54 * 3 + 12);
+        // 排序 chip 从右往左展开（与 render 一致）
+        int sx = x + w - 12;
         for (int i = 0; i < 3; i++) {
-            int cw = 54;
-            if (inBox(mx, ly - 1, sx + i * (cw + 6), 0, cw, 18)) {
+            String label = sLabels[i] + (browseSort == i ? (browseSortDesc ? " ↓" : " ↑") : "");
+            int cw = compact ? 52 : Math.max(52, font.width(label) + 20);
+            sx -= cw + (i > 0 ? chipGap : 0);
+        }
+        for (int i = 0; i < 3; i++) {
+            String label = sLabels[i] + (browseSort == i ? (browseSortDesc ? " ↓" : " ↑") : "");
+            int cw = compact ? 52 : Math.max(52, font.width(label) + 20);
+            int cxx = sx + (i == 0 ? 0 : 0);   // sx 现在指向最左 chip 起点
+            int offset = 0;
+            for (int j = 0; j < i; j++) {
+                String lj = sLabels[j] + (browseSort == j ? (browseSortDesc ? " ↓" : " ↑") : "");
+                offset += (compact ? 52 : Math.max(52, font.width(lj) + 20)) + chipGap;
+            }
+            if (inBox(mx, ly - 1, cxx + offset, 0, cw, 18)) {
                 if (browseSort == i) browseSortDesc = !browseSortDesc; else browseSort = i;
                 browseScroll = 0;
                 return;
@@ -565,30 +602,44 @@ public class SfxPanelScreen extends Screen {
         if (data.scanning()) { scanningCard(g, x, y, a); return; }
         title(g, x, y, L("sablefix.panel.tab.browse"), a);
 
-        // 过滤 chips 行（y+16）
+        // 过滤 chips 行（y+16）—— 宽度自适应标签（中文 4 字 + 方向箭头会超 54px）
         int fy = y + 16;
         String[] fLabels = { L("sablefix.panel.filter_all"), L("sablefix.panel.filter_bad"), L("sablefix.panel.filter_ok") };
-        int cx = x + 12;
+        String[] sLabels = { L("sablefix.panel.sort_name"), L("sablefix.panel.sort_size"), L("sablefix.panel.sort_dead") };
+        int chipH = 18;
+        int fTotal = 0, sTotal = 0;
+        for (String s : fLabels) fTotal += font.width(s) + 18;
+        for (String s : sLabels) sTotal += font.width(s) + 26;   // 排序 chip 预留箭头位
+        int chipGap = 8;
+        // 空间不够时缩到最小 chip 宽（52），再不够只能截断（dtr 兜底）
+        boolean compact = fTotal + chipGap * 2 + sTotal + 24 > w;
+        int fx = x + 12;
         for (int i = 0; i < 3; i++) {
+            int cw = compact ? 52 : Math.max(52, font.width(fLabels[i]) + 18);
             boolean sel = browseFilter == i;
-            boolean hov = inBox(mx, my, cx, fy, 54, 18);
-            roundRect(g, cx, fy, 54, 18, 6, sel ? 0x3F7DBAFF : (hov ? 0x22FFFFFF : 0x12FFFFFF),
+            boolean hov = inBox(mx, my, fx, fy, cw, chipH);
+            roundRect(g, fx, fy, cw, chipH, 6, sel ? 0x3F7DBAFF : (hov ? 0x22FFFFFF : 0x12FFFFFF),
                     sel ? withA(ACC, a) : 0);
-            String fl = fLabels[i];
-            g.drawString(font, fl, cx + (54 - font.width(fl)) / 2, fy + 5, withA(sel ? TEXT : DIM, a), false);
-            cx += 60;
+            int tw = font.width(fLabels[i]);
+            if (tw <= cw - 8) g.drawString(font, fLabels[i], fx + (cw - tw) / 2, fy + 5, withA(sel ? TEXT : DIM, a), false);
+            else dtr(g, fLabels[i], fx + 4, fy + 5, cw - 8, withA(sel ? TEXT : DIM, a), false);
+            fx += cw + chipGap;
         }
         // 排序 chips（右侧）：点击循环 升/降
-        String[] sLabels = { L("sablefix.panel.sort_name"), L("sablefix.panel.sort_size"), L("sablefix.panel.sort_dead") };
-        int sx = x + w - 12 - (54 * 3 + 12);
-        for (int i = 0; i < 3; i++) {
-            int cxx = sx + i * 60;
+        int sx = x + w - 12;
+        for (int i = 2; i >= 0; i--) {
+            String label = sLabels[i] + (browseSort == i ? (browseSortDesc ? " ↓" : " ↑") : "");
+            int cw = compact ? 52 : Math.max(52, font.width(label) + 20);
+            sx -= cw;
+            if (i < 2) sx -= chipGap;
+            int cxx = sx;
             boolean sel = browseSort == i;
-            boolean hov = inBox(mx, my, cxx, fy, 54, 18);
-            roundRect(g, cxx, fy, 54, 18, 6, sel ? 0x2A7DBAFF : (hov ? 0x22FFFFFF : 0x12FFFFFF),
+            boolean hov = inBox(mx, my, cxx, fy, cw, chipH);
+            roundRect(g, cxx, fy, cw, chipH, 6, sel ? 0x2A7DBAFF : (hov ? 0x22FFFFFF : 0x12FFFFFF),
                     sel ? withA(ACC, a) : 0);
-            String sl = sLabels[i] + (sel ? (browseSortDesc ? " ↓" : " ↑") : "");
-            g.drawString(font, sl, cxx + (54 - font.width(sl)) / 2, fy + 5, withA(sel ? ACC : DIM, a), false);
+            int tw = font.width(label);
+            if (tw <= cw - 8) g.drawString(font, label, cxx + (cw - tw) / 2, fy + 5, withA(sel ? ACC : DIM, a), false);
+            else dtr(g, label, cxx + 4, fy + 5, cw - 8, withA(sel ? ACC : DIM, a), false);
         }
 
         int ly = fy + 26;
@@ -641,9 +692,8 @@ public class SfxPanelScreen extends Screen {
     // ---- 诊断 ----
     private void pageDiag(GuiGraphics g, int x, int y, int w, int h, int mx, int my, int a) {
         title(g, x, y, L("sablefix.panel.tab.diag"), a);
-        int ix = SIDE_X + SIDE_W + 20;
-        g.drawString(font, "X", ix - 10, 48, withA(FAINT, 0xFFFFFFFF), false);
-        g.drawString(font, "Z", ix + diagBoxW + 4, 48, withA(FAINT, 0xFFFFFFFF), false);
+        g.drawString(font, "X", diagIx - 10, 48, withA(FAINT, 0xFFFFFFFF), false);
+        g.drawString(font, "Z", diagIx + diagBoxW + 4, 48, withA(FAINT, 0xFFFFFFFF), false);
         boolean hov = inBox(mx, my, diagBtnX, diagBtnY, 46, 18);
         roundRect(g, diagBtnX, diagBtnY, 46, 18, 8, hov ? 0x557DBAFF : 0x2A7DBAFF, ACC);
         String diagLabel = L("sablefix.panel.diag");
@@ -844,10 +894,12 @@ public class SfxPanelScreen extends Screen {
         int halfW = (w - 30) / 2;
         roundRect(g, x + 10, qy, halfW, 28, 8, 0x2258A6FF, ACC);
         String qtext = L("sablefix.panel.about_qq");
-        int qw = font.width(qtext);
+        int qavail = halfW - 16;
+        float qScale = font.width(qtext) * 1.1f <= qavail ? 1.1f : Math.max(0.75f, qavail / (float) font.width(qtext));
+        int qw = (int) (font.width(qtext) * qScale);
         g.pose().pushPose();
-        g.pose().translate(x + 10 + halfW / 2f - qw / 2f, qy + 9, 0);
-        g.pose().scale(1.1f, 1.1f, 1);
+        g.pose().translate(x + 10 + halfW / 2f - qw / 2f, qy + 14 - 7 * qScale, 0);
+        g.pose().scale(qScale, qScale, 1);
         g.drawString(font, qtext, 0, 0, withA(ACC, a), true);
         g.pose().popPose();
 
@@ -856,10 +908,13 @@ public class SfxPanelScreen extends Screen {
         roundRect(g, tgBtnX, tgBtnY, tgBtnW, tgBtnH, 8, tgHov ? 0x3358A6FF : 0x2258A6FF, ACC);
         boolean copied = tgCopiedAt > 0 && Util.getMillis() - tgCopiedAt < 2000;
         String ttext = copied ? L("sablefix.panel.about_tg_copied") : L("sablefix.panel.about_tg");
-        int tw = font.width(ttext);
+        // 字号自适应：1.1 倍放得下就放大，否则缩到正好（最低 0.75）
+        int tavail = tgBtnW - 16;
+        float tScale = font.width(ttext) * 1.1f <= tavail ? 1.1f : Math.max(0.75f, tavail / (float) font.width(ttext));
+        int tw = (int) (font.width(ttext) * tScale);
         g.pose().pushPose();
-        g.pose().translate(tgBtnX + tgBtnW / 2f - tw / 2f, tgBtnY + 9, 0);
-        g.pose().scale(1.1f, 1.1f, 1);
+        g.pose().translate(tgBtnX + tgBtnW / 2f - tw / 2f, tgBtnY + 14 - 7 * tScale, 0);
+        g.pose().scale(tScale, tScale, 1);
         g.drawString(font, ttext, 0, 0, withA(tgHov ? TEXT : ACC, a), true);
         g.pose().popPose();
 
