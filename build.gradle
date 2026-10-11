@@ -27,6 +27,8 @@ neoForge {
                 systemProperty 'sfx.demo', 'true'
                 def tab = System.getProperty('sfx.demo.tab') ?: System.getenv('SFX_DEMO_TAB')
                 if (tab != null) systemProperty 'sfx.demo.tab', tab
+                def sc = System.getProperty('sfx.scale') ?: System.getenv('SFX_SCALE')
+                if (sc != null) systemProperty 'sfx.scale', sc
                 def w = System.getProperty('sfx.w') ?: System.getenv('SFX_W')
                 def h = System.getProperty('sfx.h') ?: System.getenv('SFX_H')
                 if (w != null) {

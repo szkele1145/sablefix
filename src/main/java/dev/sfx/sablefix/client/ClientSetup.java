@@ -34,8 +34,9 @@ public final class ClientSetup {
         if (demoPhase == 1) {
             demoTicks++;
             if (demoTicks == 40) {
-                // demo 下强制 1x：auto scale(3x) 会让面板逻辑宽只剩 291，按钮/卡片全被挤没
-                mc.options.guiScale().set(1);
+                // demo 下 GUI scale 可指定：-Dsfx.scale=N；未指定用 1（auto 3x 会把逻辑宽压到 291）
+                String scaleProp = System.getProperty("sfx.scale");
+                mc.options.guiScale().set(scaleProp != null ? Integer.parseInt(scaleProp) : 1);
                 mc.setScreen(new SfxPanelScreen());
                 demoPhase = 2;
             }

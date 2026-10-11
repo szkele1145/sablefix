@@ -334,7 +334,9 @@ public class SfxPanelScreen extends Screen {
         try {
             var img = net.minecraft.client.Screenshot.takeScreenshot(Minecraft.getInstance().getMainRenderTarget());
             java.nio.file.Files.createDirectories(java.nio.file.Path.of("screenshots"));
-            img.writeToFile(java.nio.file.Path.of("screenshots", "sfx-tab" + tab + ".png"));
+            String scaleTag = System.getProperty("sfx.scale");
+            String fname = "sfx-tab" + tab + (scaleTag != null ? "-s" + scaleTag : "") + ".png";
+            img.writeToFile(java.nio.file.Path.of("screenshots", fname));
             img.close();
         } catch (Throwable t) {
             dev.sfx.sablefix.SableFixMod.LOGGER.warn("auto screenshot failed", t);
