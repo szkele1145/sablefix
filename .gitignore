@@ -3,3 +3,7 @@ build/
 run/
 *.iml
 .idea/
+
+mrdata.json
+mrpatch.json
+.mrtoken
