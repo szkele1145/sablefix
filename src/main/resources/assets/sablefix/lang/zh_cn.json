@@ -48,7 +48,7 @@
   "sablefix.panel.log_scrolled": " · 已上翻 %s 行",
   "sablefix.panel.log_hint": "滚轮向下翻到底即复位",
   "sablefix.panel.about_qq": "问题反馈Q群 1129543042",
-  "sablefix.panel.about_ver": "Sable Fix Core v1.1.0 — Sable 存档自愈与诊断核心",
+  "sablefix.panel.about_ver": "Sable Fix Core v1.2.0 — Sable 存档自愈与诊断核心",
   "sablefix.panel.about_what": "它是干嘛的",
   "sablefix.panel.about_what1": "Sable（航空学）的船和飞行器存在独立的子层级文件里。",
   "sablefix.panel.about_what2": "这类文件一旦指针损坏，游戏不会报错，只会悄悄丢结构；",
@@ -110,5 +110,14 @@
   "sablefix.panel.dur_ms": "%s 分 %s 秒",
   "sablefix.panel.about_tg": "Telegram 群 @maodie_mods（点此复制链接）",
   "sablefix.panel.about_tg_copied": "✓ 链接已复制",
-  "sablefix.perm.denied": "§c[SableFix] 需要管理员权限（等级 2）才能使用诊断面板"
+  "sablefix.perm.denied": "§c[SableFix] 需要管理员权限（等级 2）才能使用诊断面板",
+  "sablefix.cmd.help_repair": "修复子层级文件：dry=预览要清零的槽位，apply=自动备份后执行（建议停服）",
+  "sablefix.cmd.repair_no_file": "未找到问题文件: %s（用 /sablefix list 查看清单）",
+  "sablefix.cmd.repair_nothing": "%s 无需修复（没有死指针/坏条目）",
+  "sablefix.cmd.repair_plan": "修复计划 %s：将清零 %s 个死槽：",
+  "sablefix.cmd.repair_dry_hint": "以上是 dry 预览，未写入任何数据。确认无误后执行 /sablefix repair %s apply",
+  "sablefix.cmd.repair_done": "✓ 已清零 %s 个槽位。原文件已备份到 %s",
+  "sablefix.cmd.repair_restart_hint": "下次启动加载该子层级时生效。若文件被占用请先停服再试。",
+  "sablefix.cmd.repair_locked": "%s 被占用（服务器运行中 Sable 持有句柄）。请停服后再执行 apply。",
+  "sablefix.cmd.repair_fail": "修复 %s 失败: %s"
 }

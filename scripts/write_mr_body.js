@@ -1,0 +1,35 @@
+// 生成 Modrinth 双语描述 patch
+const fs = require('fs');
+const body = [
+  '**Sable Fix Core** — save self-healing & diagnostics for Sable (Aeronautics) worlds · 存档自愈与诊断核心',
+  '',
+  '## 🌍 English',
+  '',
+  'Ships and airships from Sable (Aeronautics) live in separate `.slvlr`/`.slvls` sublevel files. When their pointer tables go bad, the game fails silently — structures just vanish. And when a multiplayer server deadlocks, the vanilla watchdog kills it after 60 s with zero clues.',
+  '',
+  '**This mod fixes both:**',
+  '- 🛡️ **Deadlock watch** — full thread dump after 20 s stall (vanilla kills at 60 s): who waits on whom, in `logs/sablefix/`',
+  '- 🔍 **Startup health check** — verifies every sublevel pointer table & force-load tickets (read-only)',
+  '- 🛠️ **Repair** — `/sablefix repair <file> dry|apply`: preview dead slots, then clear them with an automatic backup',
+  '- 🖥️ **GUI panel** — `/sfxpanel` (bilingual EN/中文): overview, save check, sublevel browser, chunk diag, watchdog, logs, about',
+  '- 📦 75 KB, zero dependencies, same jar on client & server, NeoForge 1.21.1',
+  '',
+  '**Feedback:** QQ 1129543042 (中文) · Telegram @maodie_mods (international, link in the in-mod About tab & v1.1.0+ changelog)',
+  '',
+  '---',
+  '',
+  '## 🇨🇳 中文',
+  '',
+  'Sable（航空学）的船与飞行器存在独立的 `.slvlr`/`.slvls` 子层级文件里，指针表一坏游戏不报错、只会悄悄丢结构；多人服一旦卡死，原版看门狗 60 秒直接杀服、不留线索。',
+  '',
+  '**这个模组两头都治：**',
+  '- 🛡️ **死锁监视** — 卡死 20 秒自动抓全线程栈（原版 60 秒杀服前抢下现场），谁在等谁一眼看到底',
+  '- 🔍 **启动体检** — 逐个校验子层级指针表与 force-load 票据（全程只读）',
+  '- 🛠️ **修复** — `/sablefix repair <file> dry|apply`：预览死槽，确认后自动备份再清零',
+  '- 🖥️ **图形面板** — `/sfxpanel`（中英双语）：总览 / 存档体检 / 子层级浏览器 / 区块诊断 / 死锁监视 / 运行日志 / 关于',
+  '- 📦 75KB 单 jar，零依赖，双端同装，NeoForge 1.21.1',
+  '',
+  '**反馈：** QQ 群 1129543042 · Telegram @maodie_mods（链接见模组内「关于」页）',
+].join('\n');
+fs.writeFileSync('D:/sfx/proj/mrpatch.json', JSON.stringify({ body }));
+console.log('bilingual body written,', body.length, 'chars');

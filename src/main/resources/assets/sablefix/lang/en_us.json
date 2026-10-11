@@ -48,7 +48,7 @@
   "sablefix.panel.log_scrolled": " · scrolled up %s lines",
   "sablefix.panel.log_hint": "Scroll back down to reset",
   "sablefix.panel.about_qq": "Feedback QQ group 1129543042",
-  "sablefix.panel.about_ver": "Sable Fix Core v1.1.0 — Sable save self-healing & diagnostics",
+  "sablefix.panel.about_ver": "Sable Fix Core v1.2.0 — Sable save self-healing & diagnostics",
   "sablefix.panel.about_what": "What it does",
   "sablefix.panel.about_what1": "Sable (Aeronautics) ships and airships live in separate sublevel files.",
   "sablefix.panel.about_what2": "Corrupted pointers there fail silently — structures just vanish;",
@@ -110,5 +110,14 @@
   "sablefix.panel.dur_ms": "%s min %s s",
   "sablefix.panel.about_tg": "Telegram @maodie_mods (click to copy)",
   "sablefix.panel.about_tg_copied": "✓ Link copied",
-  "sablefix.perm.denied": "§c[SableFix] Operator permission (level 2) required for the diagnostic panel"
+  "sablefix.perm.denied": "§c[SableFix] Operator permission (level 2) required for the diagnostic panel",
+  "sablefix.cmd.help_repair": "repair a sublevel file: dry = preview slots to clear, apply = backup then fix (stop server first)",
+  "sablefix.cmd.repair_no_file": "Problem file not found: %s (see /sablefix list)",
+  "sablefix.cmd.repair_nothing": "%s needs no repair (no dead pointers / bad entries)",
+  "sablefix.cmd.repair_plan": "Repair plan %s: clear %s dead slot(s):",
+  "sablefix.cmd.repair_dry_hint": "Dry run only — nothing written. Confirm with /sablefix repair %s apply",
+  "sablefix.cmd.repair_done": "✓ Cleared %s slot(s). Original backed up to %s",
+  "sablefix.cmd.repair_restart_hint": "Takes effect when the sublevel loads next start. Stop the server first if the file is locked.",
+  "sablefix.cmd.repair_locked": "%s is locked (Sable holds a handle while running). Stop the server, then apply.",
+  "sablefix.cmd.repair_fail": "Repair %s failed: %s"
 }
