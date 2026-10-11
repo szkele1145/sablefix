@@ -22,22 +22,32 @@ public final class ClientSetup {
 
     @SubscribeEvent
     public static void onClientTick(net.neoforged.neoforge.client.event.ClientTickEvent.Post event) {
-        // 演示模式：200 tick 后自动打开面板（截图/录屏用）。
+        // 演示模式（截图/录屏）：等标题界面就绪 → 打开面板 → 面板自轮播 7 页截图 → 自动退出。
         // 开关二选一：JVM 系统属性 -Dsfx.demo=true 或环境变量 SFX_DEMO=1
         if (!isDemo()) return;
-        demoTicks++;
-        if (demoTicks == 200) {
-            Minecraft mc = Minecraft.getInstance();
-            if (mc.screen == null) mc.setScreen(new SfxPanelScreen());
+        Minecraft mc = Minecraft.getInstance();
+        if (demoPhase == 0) {
+            // 阶段0：等标题界面出现（更早 setScreen 会被资源加载界面覆盖）
+            if (mc.screen instanceof net.minecraft.client.gui.screens.TitleScreen) demoPhase = 1;
+            return;
         }
+        if (demoPhase == 1) {
+            demoTicks++;
+            if (demoTicks == 40) {
+                mc.setScreen(new SfxPanelScreen());
+                demoPhase = 2;
+            }
+        }
+        // 阶段2：SfxPanelScreen.demoAutoCycle 负责轮播与 stop()
     }
+
+    private static int demoPhase;
+    private static int demoTicks;
 
     /** 演示模式开关：系统属性 sfx.demo 或环境变量 SFX_DEMO。 */
     static boolean isDemo() {
         return Boolean.getBoolean("sfx.demo") || "1".equals(System.getenv("SFX_DEMO"));
     }
-
-    private static int demoTicks;
 
     @SubscribeEvent
     public static void onClientCommands(RegisterClientCommandsEvent event) {
