@@ -148,11 +148,13 @@ public class SfxPanelScreen extends Screen {
         repairConfirmFile = null;
         repairDryFile = null;
         if (t != 1) repairMsg = null;
+        if (t != 4) { purgeConfirm = false; purgeMsg = null; }
     }
 
     private void request() {
         repairConfirmFile = null;
         repairDryFile = null;
+        purgeConfirm = false;
         PacketDistributor.sendToServer(new NetHandler.PanelReq());
     }
 
@@ -219,6 +221,11 @@ public class SfxPanelScreen extends Screen {
         if (tab == 6 && tgBtnW > 0 && inBox(mx, my, tgBtnX, tgBtnY, tgBtnW, tgBtnH)) {
             Minecraft.getInstance().keyboardHandler.setClipboard(SableFixMod.TG_URL);
             tgCopiedAt = Util.getMillis();
+            return true;
+        }
+        // 监视页：票据清理按钮（第一次=dry 预览，再点=确认 apply）
+        if (tab == 4 && purgeBtnX >= 0 && inBox(mx, my, purgeBtnX, purgeBtnY, 88, 18)) {
+            PacketDistributor.sendToServer(new NetHandler.PurgeReq(purgeConfirm));
             return true;
         }
         return super.mouseClicked(mx, my, button);
@@ -531,6 +538,28 @@ public class SfxPanelScreen extends Screen {
         }
     }
 
+    public void onPurgeRes(NetHandler.PurgeRes r) {
+        if (!r.ok()) {
+            purgeMsg = L(r.errKey());
+            purgeMsgOk = false;
+            purgeConfirm = false;
+            return;
+        }
+        if (!r.applied()) {
+            purgeConfirm = true;
+            purgeMsg = L("sablefix.panel.purge_plan", r.count());
+            purgeMsgOk = true;
+        } else {
+            purgeConfirm = false;
+            purgeMsg = L("sablefix.panel.purge_done_gui", r.count());
+            purgeMsgOk = true;
+            var p = Minecraft.getInstance().player;
+            if (p != null)
+                p.displayClientMessage(Component.translatable("sablefix.cmd.purge_done", r.count(), r.backup()), false);
+        }
+        request();   // 重新拉数据（票据数应归零）
+    }
+
     // ---- 浏览 ----
     private static final int FILTER_ALL = 0, FILTER_BAD = 1, FILTER_OK = 2;
     private static final int SORT_NAME = 0, SORT_SIZE = 1, SORT_DEAD = 2;
@@ -731,6 +760,13 @@ public class SfxPanelScreen extends Screen {
                    : L("sablefix.panel.watch_lag", data.lastTickGapMs()), a);
 
         int cy2 = y + 50;
+        // 票据清理结果横幅（dry/apply 返回后显示）
+        if (purgeMsg != null) {
+            roundRect(g, x, cy2, w, 20, 8, purgeMsgOk ? 0x144EC97F : 0x14E05D5D,
+                    withA(purgeMsgOk ? OK : BAD, a));
+            dtr(g, purgeMsg, x + 12, cy2 + 6, w - 24, withA(purgeMsgOk ? OK : BAD, a), false);
+            cy2 += 26;
+        }
         int infoH = 84;
         int ty = cy2 + infoH + 10;
         int tickH = h - (ty - y) - 4;
@@ -750,6 +786,24 @@ public class SfxPanelScreen extends Screen {
         int total = all.size(), unique = counts.size();
         g.drawString(font, L("sablefix.panel.ticket_uuids"), x + 12, ty + 8, withA(DIM, a), false);
         g.drawString(font, L("sablefix.panel.tickets_stats", total, unique), x + w - 12 - font.width(L("sablefix.panel.tickets_stats", total, unique)), ty + 8, withA(ACC, a), false);
+
+        // 清理按钮（统计行左侧空间够时显示）：三态 = 正常 / 确认
+        // 阈值 470：720p auto-scale 2x 下逻辑宽 504，560 会把按钮挤掉
+        if (total > 0 && w > 470) {
+            int bw = 88;
+            int bx = x + w - 12 - bw - font.width(L("sablefix.panel.tickets_stats", total, unique)) - 14;
+            boolean confirm = purgeConfirm;
+            boolean hov = inBox(mx, my, bx, ty + 3, bw, 18);
+            int bfill = confirm ? (hov ? 0x66E05D5D : 0x40E05D5D) : (hov ? 0x3F7DBAFF : 0x227DBAFF);
+            roundRect(g, bx, ty + 3, bw, 18, 6, bfill, withA(confirm ? BAD : ACC, a));
+            String bl = L(confirm ? "sablefix.panel.purge_confirm" : "sablefix.panel.purge_btn");
+            int tw2 = font.width(bl);
+            if (tw2 <= bw - 8) g.drawString(font, bl, bx + (bw - tw2) / 2, ty + 8, withA(confirm ? BAD : TEXT, a), false);
+            else dtr(g, bl, bx + 4, ty + 8, bw - 8, withA(confirm ? BAD : TEXT, a), false);
+            purgeBtnX = bx; purgeBtnY = ty + 3;
+        } else {
+            purgeBtnX = -1;
+        }
 
         // 行区滚动（复用 aboutScroll 的裁剪模式）
         int rowsTop = ty + 20;
@@ -786,6 +840,10 @@ public class SfxPanelScreen extends Screen {
 
     private int ticketScroll;
     private int ticketContentBottom;
+    private int purgeBtnX = -1, purgeBtnY;
+    private boolean purgeConfirm;          // dry 预览后的确认态
+    private String purgeMsg;               // 横幅消息（复用 watch banner 上方）
+    private boolean purgeMsgOk;
 
     // ================= 绘图工具（实现在 ui.Widgets / ui.Theme，此处仅转调） =================
     private static void dtr(GuiGraphics g, String s, int x, int y, int maxW, int color, boolean shadow) {

@@ -147,5 +147,10 @@
   "sablefix.cmd.purge_done": "✓ Cleared %s ticket(s). Original backed up to %s",
   "sablefix.cmd.purge_restart_hint": "Takes effect next server start (in-memory tickets untouched). Stop the server first if the file is locked.",
   "sablefix.cmd.purge_locked": "Ticket file is locked (server running). Stop the server, then apply.",
-  "sablefix.cmd.purge_fail": "Purge failed: %s"
+  "sablefix.cmd.purge_fail": "Purge failed: %s",
+  "sablefix.panel.purge_btn": "Purge",
+  "sablefix.panel.purge_confirm": "Confirm",
+  "sablefix.panel.purge_plan_gui": "Dry run: %s ticket(s) to clear (auto-backup, other fields kept) — click Confirm to apply",
+  "sablefix.panel.purge_done_gui": "✓ Tickets cleared: %s (details in chat)",
+  "sablefix.panel.purge_plan": "Dry run: %s ticket(s) to clear (other NBT fields kept)"
 }

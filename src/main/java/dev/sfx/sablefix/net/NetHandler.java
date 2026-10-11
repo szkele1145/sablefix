@@ -27,6 +27,10 @@ public final class NetHandler {
                 ctx.enqueueWork(() -> ServerHandlers.onRepairReq(p, ctx)));
         reg.playToClient(RepairRes.TYPE, RepairRes.CODEC, (p, ctx) ->
                 ctx.enqueueWork(() -> ClientBridge.onRepairRes(p)));
+        reg.playToServer(PurgeReq.TYPE, PurgeReq.CODEC, (p, ctx) ->
+                ctx.enqueueWork(() -> ServerHandlers.onPurgeReq(p, ctx)));
+        reg.playToClient(PurgeRes.TYPE, PurgeRes.CODEC, (p, ctx) ->
+                ctx.enqueueWork(() -> ClientBridge.onPurgeRes(p)));
         SableFixMod.LOGGER.info("网络通道已注册");
     }
 
@@ -88,6 +92,26 @@ public final class NetHandler {
                         b.writeUtf(p.errKey, 64); b.writeUtf(p.errArg, 128); },
                 b -> new RepairRes(b.readBoolean(), b.readBoolean(), b.readUtf(128), b.readVarInt(),
                         b.readUtf(256), b.readUtf(256), b.readUtf(64), b.readUtf(128)));
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    /** C2S：票据清理请求。apply=false 为 dry 预览（只回条数），true = 备份+清空。 */
+    public record PurgeReq(boolean apply) implements CustomPacketPayload {
+        public static final Type<PurgeReq> TYPE = new Type<>(id("purge_req"));
+        public static final StreamCodec<FriendlyByteBuf, PurgeReq> CODEC = StreamCodec.of(
+                (b, p) -> b.writeBoolean(p.apply),
+                b -> new PurgeReq(b.readBoolean()));
+        @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
+    }
+
+    /** S2C：票据清理结果。ok=false 时 errKey 为 lang key。 */
+    public record PurgeRes(boolean ok, boolean applied, int count, String backup, String errKey) implements CustomPacketPayload {
+        public static final Type<PurgeRes> TYPE = new Type<>(id("purge_res"));
+        public static final StreamCodec<FriendlyByteBuf, PurgeRes> CODEC = StreamCodec.of(
+                (b, p) -> { b.writeBoolean(p.ok); b.writeBoolean(p.applied); b.writeVarInt(p.count);
+                        b.writeUtf(p.backup, 256); b.writeUtf(p.errKey, 64); },
+                b -> new PurgeRes(b.readBoolean(), b.readBoolean(), b.readVarInt(),
+                        b.readUtf(256), b.readUtf(64)));
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 

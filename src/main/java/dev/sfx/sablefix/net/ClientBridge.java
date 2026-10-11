@@ -11,12 +11,14 @@ public final class ClientBridge {
     private static volatile Consumer<NetHandler.PanelData> panelSink;
     private static volatile Consumer<NetHandler.DiagRes> diagSink;
     private static volatile Consumer<NetHandler.RepairRes> repairSink;
+    private static volatile Consumer<NetHandler.PurgeRes> purgeSink;
 
     private ClientBridge() {}
 
     public static void setPanelSink(Consumer<NetHandler.PanelData> sink) { panelSink = sink; }
     public static void setDiagSink(Consumer<NetHandler.DiagRes> sink) { diagSink = sink; }
     public static void setRepairSink(Consumer<NetHandler.RepairRes> sink) { repairSink = sink; }
+    public static void setPurgeSink(Consumer<NetHandler.PurgeRes> sink) { purgeSink = sink; }
 
     public static void onPanelData(NetHandler.PanelData data) {
         Consumer<NetHandler.PanelData> s = panelSink;
@@ -30,6 +32,11 @@ public final class ClientBridge {
 
     public static void onRepairRes(NetHandler.RepairRes res) {
         Consumer<NetHandler.RepairRes> s = repairSink;
+        if (s != null) s.accept(res);
+    }
+
+    public static void onPurgeRes(NetHandler.PurgeRes res) {
+        Consumer<NetHandler.PurgeRes> s = purgeSink;
         if (s != null) s.accept(res);
     }
 }

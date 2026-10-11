@@ -34,6 +34,8 @@ public final class ClientSetup {
         if (demoPhase == 1) {
             demoTicks++;
             if (demoTicks == 40) {
+                // demo 下强制 1x：auto scale(3x) 会让面板逻辑宽只剩 291，按钮/卡片全被挤没
+                mc.options.guiScale().set(1);
                 mc.setScreen(new SfxPanelScreen());
                 demoPhase = 2;
             }
@@ -72,6 +74,10 @@ public final class ClientSetup {
         ClientBridge.setRepairSink(res -> {
             SfxPanelScreen s = openScreen;
             if (s != null) s.onRepairRes(res);
+        });
+        ClientBridge.setPurgeSink(res -> {
+            SfxPanelScreen s = openScreen;
+            if (s != null) s.onPurgeRes(res);
         });
     }
 

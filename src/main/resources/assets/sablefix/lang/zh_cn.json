@@ -147,5 +147,10 @@
   "sablefix.cmd.purge_done": "✓ 已清空 %s 条票据，原文件备份到 %s",
   "sablefix.cmd.purge_restart_hint": "下次启动服务器生效（当前内存中的票据不受影响）。若文件被占用请先停服。",
   "sablefix.cmd.purge_locked": "票据文件被占用（服务器运行中）。请停服后再执行 apply。",
-  "sablefix.cmd.purge_fail": "票据清理失败: %s"
+  "sablefix.cmd.purge_fail": "票据清理失败: %s",
+  "sablefix.panel.purge_btn": "清理票据",
+  "sablefix.panel.purge_confirm": "确认清空",
+  "sablefix.panel.purge_plan_gui": "dry 预览：将清空 %s 条票据（自动备份，其他字段保留）— 再点一次「确认清空」执行",
+  "sablefix.panel.purge_done_gui": "✓ 票据已清空：%s 条（详情见聊天栏）",
+  "sablefix.panel.purge_plan": "dry 预览：将清空 %s 条票据（其他字段原样保留）"
 }

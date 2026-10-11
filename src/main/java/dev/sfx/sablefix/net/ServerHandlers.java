@@ -3,6 +3,7 @@ package dev.sfx.sablefix.net;
 import dev.sfx.sablefix.SableFixMod;
 import dev.sfx.sablefix.scan.SubLevelRepair;
 import dev.sfx.sablefix.scan.SubLevelScan;
+import dev.sfx.sablefix.scan.TicketPurge;
 import dev.sfx.sablefix.scan.TicketScan;
 import dev.sfx.sablefix.watchdog.ThreadWatchdog;
 import net.minecraft.network.chat.Component;
@@ -189,6 +190,41 @@ public final class ServerHandlers {
             SableFixMod.LOGGER.error("panel repair failed: {}", req.file(), e);
             ctx.reply(new NetHandler.RepairRes(false, req.apply(), req.file(), 0, "", "",
                     "sablefix.cmd.repair_fail", req.file() + ": " + e.getMessage()));
+        }
+    }
+
+    /** GUI 票据清理：dry 预览条数 / apply 备份+清空。主线程执行（单文件 NBT 读写，毫秒级）。 */
+    public static void onPurgeReq(NetHandler.PurgeReq req, IPayloadContext ctx) {
+        if (!(ctx.player() instanceof ServerPlayer player)) return;
+        if (!player.hasPermissions(2)) {
+            ctx.reply(new NetHandler.PurgeRes(false, req.apply(), 0, "", "sablefix.perm.denied"));
+            return;
+        }
+        try {
+            MinecraftServer server = player.getServer();
+            Path tf = TicketScan.ticketFile(server);
+            if (!Files.exists(tf)) {
+                ctx.reply(new NetHandler.PurgeRes(true, false, 0, "", "sablefix.cmd.tickets_none"));
+                return;
+            }
+            int n = TicketPurge.count(tf);
+            if (n == 0) {
+                ctx.reply(new NetHandler.PurgeRes(true, false, 0, "", "sablefix.cmd.purge_zero"));
+                return;
+            }
+            if (!req.apply()) {
+                ctx.reply(new NetHandler.PurgeRes(true, false, n, "", ""));
+                return;
+            }
+            Path backup = TicketPurge.purge(tf);
+            SCAN_CACHE.set(null);   // 票据数据已变，作废面板缓存
+            ctx.reply(new NetHandler.PurgeRes(true, true, n, backup.toString(), ""));
+            dev.sfx.sablefix.log.ModLog.warn("面板票据清理：原 " + n + " 条已清空（备份 " + backup + "）");
+        } catch (java.nio.file.FileSystemException e) {
+            ctx.reply(new NetHandler.PurgeRes(false, true, 0, "", "sablefix.cmd.purge_locked"));
+        } catch (Exception e) {
+            SableFixMod.LOGGER.error("panel purge failed", e);
+            ctx.reply(new NetHandler.PurgeRes(false, req.apply(), 0, "", "sablefix.cmd.purge_fail"));
         }
     }
 
