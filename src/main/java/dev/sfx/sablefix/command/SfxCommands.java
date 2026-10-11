@@ -93,16 +93,23 @@ public final class SfxCommands {
             }
             int okFiles = 0, failFiles = 0, cleared = 0;
             Path lastBackup = null;
+            final int planTotal = plans.size();
+            int idx = 0;
             for (SubLevelRepair.RepairPlan p : plans) {
+                idx++;
+                final String fname = p.file().getFileName().toString();
+                final int no = idx;
                 try {
                     SubLevelRepair.RepairResult res = SubLevelRepair.apply(p);
                     okFiles++;
                     cleared += res.cleared();
                     lastBackup = res.backup();
+                    // 逐文件进度：批量时玩家能看到在动，不像卡死
+                    src.sendSuccess(() -> tr("sablefix.cmd.repair_all_progress", no, planTotal, fname, res.cleared()), false);
                 } catch (Exception e) {
                     failFiles++;
-                    SableFixMod.LOGGER.warn("repair-all: {} failed: {}", p.file().getFileName(), e.getMessage());
-                    src.sendFailure(tr("sablefix.cmd.repair_fail", p.file().getFileName().toString(), e.getMessage()));
+                    SableFixMod.LOGGER.warn("repair-all: {} failed: {}", fname, e.getMessage());
+                    src.sendFailure(tr("sablefix.cmd.repair_all_progress_fail", no, planTotal, fname));
                 }
             }
             final int fOk = okFiles, fFail = failFiles, fCleared = cleared;

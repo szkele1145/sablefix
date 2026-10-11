@@ -152,5 +152,7 @@
   "sablefix.panel.purge_confirm": "Confirm",
   "sablefix.panel.purge_plan_gui": "Dry run: %s ticket(s) to clear (auto-backup, other fields kept) — click Confirm to apply",
   "sablefix.panel.purge_done_gui": "✓ Tickets cleared: %s (details in chat)",
-  "sablefix.panel.purge_plan": "Dry run: %s ticket(s) to clear (other NBT fields kept)"
+  "sablefix.panel.purge_plan": "Dry run: %s ticket(s) to clear (other NBT fields kept)",
+  "sablefix.cmd.repair_all_progress": "§7[%s/%s]§f %s — ✓ cleared %s slot(s)",
+  "sablefix.cmd.repair_all_progress_fail": "§7[%s/%s]§f %s — ✗ failed (see log)"
 }
