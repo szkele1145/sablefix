@@ -16,6 +16,8 @@ import net.minecraft.server.MinecraftServer;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -49,7 +51,68 @@ public final class SfxCommands {
                                 .then(Commands.literal("dry").executes(c -> repair(c.getSource(),
                                         StringArgumentType.getString(c, "file"), false)))
                                 .then(Commands.literal("apply").executes(c -> repair(c.getSource(),
-                                        StringArgumentType.getString(c, "file"), true))))));
+                                        StringArgumentType.getString(c, "file"), true)))))
+                .then(Commands.literal("repair-all")
+                        .then(Commands.literal("dry").executes(c -> repairAll(c.getSource(), false)))
+                        .then(Commands.literal("apply").executes(c -> repairAll(c.getSource(), true)))));
+    }
+
+    /**
+     * 批量修复：dry = 汇总所有问题文件的死槽计划（不写盘）；
+     * apply = 逐文件备份 + 清零。单个文件失败（被占用/IO 错）不中断整体，最后汇总成功/失败数。
+     */
+    private static int repairAll(CommandSourceStack src, boolean doApply) {
+        try {
+            Path dir = src.getServer().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
+            SubLevelScan.Report r = SubLevelScan.scan(dir);
+            List<SubLevelRepair.RepairPlan> plans = new ArrayList<>();
+            for (SubLevelScan.SlvlIssue i : r.slvlr()) {
+                try { plans.add(SubLevelRepair.plan(i.file())); } catch (Exception ignored) {}
+            }
+            for (SubLevelScan.SlvlsIssue i : r.slvls()) {
+                try { plans.add(SubLevelRepair.plan(i.file())); } catch (Exception ignored) {}
+            }
+            plans.removeIf(SubLevelRepair.RepairPlan::isEmpty);
+            if (plans.isEmpty()) {
+                src.sendSuccess(() -> tr("sablefix.cmd.repair_all_nothing"), false);
+                return 0;
+            }
+            long totalSlots = plans.stream().mapToLong(p -> p.slots().size()).sum();
+            src.sendSuccess(() -> tr("sablefix.cmd.repair_all_plan", plans.size(), totalSlots), false);
+            for (SubLevelRepair.RepairPlan p : plans) {
+                src.sendSuccess(() -> Component.literal("  " + p.file().getFileName()
+                        + " → " + p.slots().size() + " " + tr("sablefix.cmd.repair_slots_word").getString()), false);
+            }
+            if (!doApply) {
+                src.sendSuccess(() -> tr("sablefix.cmd.repair_all_dry_hint"), false);
+                return 1;
+            }
+            int okFiles = 0, failFiles = 0, cleared = 0;
+            Path lastBackup = null;
+            for (SubLevelRepair.RepairPlan p : plans) {
+                try {
+                    SubLevelRepair.RepairResult res = SubLevelRepair.apply(p);
+                    okFiles++;
+                    cleared += res.cleared();
+                    lastBackup = res.backup();
+                } catch (Exception e) {
+                    failFiles++;
+                    SableFixMod.LOGGER.warn("repair-all: {} failed: {}", p.file().getFileName(), e.getMessage());
+                    src.sendFailure(tr("sablefix.cmd.repair_fail", p.file().getFileName().toString(), e.getMessage()));
+                }
+            }
+            final int fOk = okFiles, fFail = failFiles, fCleared = cleared;
+            final Path fBackup = lastBackup;
+            src.sendSuccess(() -> tr("sablefix.cmd.repair_all_done", fOk, fFail, fCleared), false);
+            if (fBackup != null) src.sendSuccess(() -> tr("sablefix.cmd.repair_backup_in", fBackup.getParent().toString()), false);
+            src.sendSuccess(() -> tr("sablefix.cmd.repair_restart_hint"), false);
+            SableFixMod.LOGGER.warn("repair-all: {} ok, {} failed, {} slots cleared", okFiles, failFiles, cleared);
+            return 1;
+        } catch (Exception e) {
+            src.sendFailure(tr("sablefix.cmd.repair_fail", "all", e.getMessage()));
+            SableFixMod.LOGGER.error("repair-all failed", e);
+        }
+        return 0;
     }
 
     /** 补全：只建议有问题的文件名（裸名，不含路径）。 */
@@ -118,6 +181,7 @@ public final class SfxCommands {
         src.sendSuccess(() -> Component.literal("§7/sablefix tickets §f— ").append(tr("sablefix.cmd.help_tickets")), false);
         src.sendSuccess(() -> Component.literal("§7/sablefix dump §f— ").append(tr("sablefix.cmd.help_dump")), false);
         src.sendSuccess(() -> Component.literal("§7/sablefix repair <file> dry|apply §f— ").append(tr("sablefix.cmd.help_repair")), false);
+        src.sendSuccess(() -> Component.literal("§7/sablefix repair-all dry|apply §f— ").append(tr("sablefix.cmd.help_repair_all")), false);
         src.sendSuccess(() -> Component.literal("§7/sfxpanel §f— ").append(tr("sablefix.cmd.help_panel")), false);
         src.sendSuccess(() -> tr("sablefix.cmd.help_passive"), false);
         src.sendSuccess(() -> tr("sablefix.cmd.help_qq"), false);
