@@ -78,6 +78,11 @@ public final class NetHandler {
     }
 
     // ---- 序列化 ----
+    private static final int MAX_FILES = 4096;
+    private static final int MAX_UUIDS = 8192;
+    private static final int MAX_DIMS = 256;
+    private static final int MAX_LOGS = 400;
+
     private static void writePanel(FriendlyByteBuf f, PanelData p) {
         f.writeVarInt(p.files.size());
         for (PanelData.FileRow r : p.files) {
@@ -100,25 +105,25 @@ public final class NetHandler {
     }
 
     private static PanelData readPanel(FriendlyByteBuf f) {
-        int n = f.readVarInt();
-        List<PanelData.FileRow> files = new ArrayList<>(n);
+        int n = Math.min(f.readVarInt(), MAX_FILES);
+        List<PanelData.FileRow> files = new ArrayList<>(Math.min(n, 1024));
         for (int i = 0; i < n; i++) {
             files.add(new PanelData.FileRow(f.readUtf(), f.readBoolean(), f.readVarLong(), f.readVarInt(), f.readVarInt()));
         }
         int tc = f.readVarInt();
-        int un = f.readVarInt();
-        List<String> uuids = new ArrayList<>(un);
+        int un = Math.min(f.readVarInt(), MAX_UUIDS);
+        List<String> uuids = new ArrayList<>(Math.min(un, 256));
         for (int i = 0; i < un; i++) uuids.add(f.readUtf());
         long gap = f.readVarLong();
         int dumps = f.readVarInt();
         long up = f.readVarLong();
-        int dn = f.readVarInt();
-        List<PanelData.DimRow> dims = new ArrayList<>(dn);
+        int dn = Math.min(f.readVarInt(), MAX_DIMS);
+        List<PanelData.DimRow> dims = new ArrayList<>(Math.min(dn, 16));
         for (int i = 0; i < dn; i++) {
             dims.add(new PanelData.DimRow(f.readUtf(), f.readVarInt(), f.readVarInt(), f.readVarInt()));
         }
-        int ln = f.readVarInt();
-        List<String> logs = new ArrayList<>(ln);
+        int ln = Math.min(f.readVarInt(), MAX_LOGS);
+        List<String> logs = new ArrayList<>(Math.min(ln, 200));
         for (int i = 0; i < ln; i++) logs.add(f.readUtf(512));
         return new PanelData(files, tc, uuids, gap, dumps, up, dims, logs);
     }

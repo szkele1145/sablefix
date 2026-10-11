@@ -20,6 +20,7 @@ import java.nio.file.Path;
  * /sablefix tickets —— 票据明细
  * /sablefix dump    —— 立刻抓一份全线程栈（E 手动版）
  * 全部只读，无副作用，权限 2 级以上。
+ * 文案走 lang key（zh_cn/en_us）。
  */
 public final class SfxCommands {
 
@@ -39,15 +40,19 @@ public final class SfxCommands {
                 .then(Commands.literal("dump").executes(c -> dump(c.getSource()))));
     }
 
+    private static Component tr(String key, Object... args) {
+        return Component.translatable(key, args);
+    }
+
     private static int help(CommandSourceStack src) {
-        src.sendSuccess(() -> Component.literal("§6=== Sable Fix Core 帮助 ==="), false);
-        src.sendSuccess(() -> Component.literal("§7/sablefix check §f— 全量体检：子层级指针 + 票据文件（只读）"), false);
-        src.sendSuccess(() -> Component.literal("§7/sablefix list §f— 列出有死指针/坏条目的文件"), false);
-        src.sendSuccess(() -> Component.literal("§7/sablefix tickets §f— 查看 force-load 票据明细"), false);
-        src.sendSuccess(() -> Component.literal("§7/sablefix dump §f— 立刻抓一份全线程栈到 logs/sablefix/"), false);
-        src.sendSuccess(() -> Component.literal("§7客户端 /sfxpanel §f— 打开图形面板（需装同一个 jar）"), false);
-        src.sendSuccess(() -> Component.literal("§8被动功能：启动自动体检 · 卡死 20 秒自动抓栈 · 运行日志"), false);
-        src.sendSuccess(() -> Component.literal("§8问题反馈Q群 1129543042"), false);
+        src.sendSuccess(() -> tr("sablefix.cmd.help_title"), false);
+        src.sendSuccess(() -> Component.literal("§7/sablefix check §f— ").append(tr("sablefix.cmd.help_check")), false);
+        src.sendSuccess(() -> Component.literal("§7/sablefix list §f— ").append(tr("sablefix.cmd.help_list")), false);
+        src.sendSuccess(() -> Component.literal("§7/sablefix tickets §f— ").append(tr("sablefix.cmd.help_tickets")), false);
+        src.sendSuccess(() -> Component.literal("§7/sablefix dump §f— ").append(tr("sablefix.cmd.help_dump")), false);
+        src.sendSuccess(() -> Component.literal("§7/sfxpanel §f— ").append(tr("sablefix.cmd.help_panel")), false);
+        src.sendSuccess(() -> tr("sablefix.cmd.help_passive"), false);
+        src.sendSuccess(() -> tr("sablefix.cmd.help_qq"), false);
         return 1;
     }
 
@@ -58,16 +63,20 @@ public final class SfxCommands {
             SubLevelScan.Report r = SubLevelScan.scan(dir);
             long dead = r.slvlr().stream().mapToLong(SubLevelScan.SlvlIssue::deadPointers).sum();
             long bad = r.slvls().stream().mapToLong(SubLevelScan.SlvlsIssue::badEntries).sum();
-            src.sendSuccess(() -> Component.literal(String.format(
-                    "子层级体检: .slvlr %d 个(死指针 %d) .slvls %d 个(坏条目 %d)",
-                    r.scannedSlvlr(), dead, r.scannedSlvls(), bad)), false);
+            src.sendSuccess(() -> tr("sablefix.cmd.check_sub",
+                    r.scannedSlvlr(), dead, r.scannedSlvls(), bad), false);
             if (!r.slvlr().isEmpty() || !r.slvls().isEmpty()) {
-                src.sendSuccess(() -> Component.literal("用 /sablefix list 看具体文件"), false);
+                src.sendSuccess(() -> tr("sablefix.cmd.check_list_hint"), false);
             }
-            TicketScan.TicketInfo t = TicketScan.read(TicketScan.ticketFile(server));
-            src.sendSuccess(() -> Component.literal("票据: " + t.count() + " 条, 解析正常"), false);
+            Path tf = TicketScan.ticketFile(server);
+            if (!java.nio.file.Files.exists(tf)) {
+                src.sendSuccess(() -> tr("sablefix.cmd.check_tickets_absent"), false);
+            } else {
+                TicketScan.TicketInfo t = TicketScan.read(tf);
+                src.sendSuccess(() -> tr("sablefix.cmd.check_tickets_ok", t.count()), false);
+            }
         } catch (Exception e) {
-            src.sendFailure(Component.literal("体检出错: " + e.getMessage()));
+            src.sendFailure(tr("sablefix.cmd.check_fail", e.getMessage()));
             SableFixMod.LOGGER.error("check 失败", e);
         }
         return 0;
@@ -78,37 +87,42 @@ public final class SfxCommands {
             Path dir = src.getServer().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
             SubLevelScan.Report r = SubLevelScan.scan(dir);
             if (r.slvlr().isEmpty() && r.slvls().isEmpty()) {
-                src.sendSuccess(() -> Component.literal("没有发现问题文件"), false);
+                src.sendSuccess(() -> tr("sablefix.cmd.list_empty"), false);
                 return 0;
             }
             for (SubLevelScan.SlvlIssue i : r.slvlr()) {
-                src.sendSuccess(() -> Component.literal(String.format("%s: 死指针 %d / 有效 %d, %d 字节",
-                        i.file().getFileName(), i.deadPointers(), i.livePointers(), i.size())), false);
+                src.sendSuccess(() -> tr("sablefix.cmd.list_slvlr",
+                        i.file().getFileName(), i.deadPointers(), i.livePointers(), i.size()), false);
             }
             for (SubLevelScan.SlvlsIssue i : r.slvls()) {
-                src.sendSuccess(() -> Component.literal(String.format("%s: 坏条目 %d, %d 字节",
-                        i.file().getFileName(), i.badEntries(), i.size())), false);
+                src.sendSuccess(() -> tr("sablefix.cmd.list_slvls",
+                        i.file().getFileName(), i.badEntries(), i.size()), false);
             }
         } catch (Exception e) {
-            src.sendFailure(Component.literal("出错: " + e.getMessage()));
+            src.sendFailure(tr("sablefix.cmd.list_fail", e.getMessage()));
         }
         return 0;
     }
 
     private static int tickets(CommandSourceStack src) {
+        Path tf = TicketScan.ticketFile(src.getServer());
+        if (!java.nio.file.Files.exists(tf)) {
+            src.sendSuccess(() -> tr("sablefix.cmd.tickets_none"), false);
+            return 0;
+        }
         try {
-            TicketScan.TicketInfo t = TicketScan.read(TicketScan.ticketFile(src.getServer()));
-            src.sendSuccess(() -> Component.literal("票据共 " + t.count() + " 条, 文件 " + t.fileSize() + " 字节"), false);
+            TicketScan.TicketInfo t = TicketScan.read(tf);
+            src.sendSuccess(() -> tr("sablefix.cmd.tickets_ok", t.count(), t.fileSize()), false);
             t.uuids().forEach(u -> src.sendSuccess(() -> Component.literal("  " + u), false));
         } catch (Exception e) {
-            src.sendFailure(Component.literal("票据读取失败: " + e.getMessage()));
+            src.sendFailure(tr("sablefix.cmd.tickets_fail", e.getMessage()));
         }
         return 0;
     }
 
     private static int dump(CommandSourceStack src) {
         ThreadWatchdog.dump(-1L);
-        src.sendSuccess(() -> Component.literal("已抓全线程栈，见 logs/sablefix/"), false);
+        src.sendSuccess(() -> tr("sablefix.cmd.dump_ok"), false);
         return 0;
     }
 }

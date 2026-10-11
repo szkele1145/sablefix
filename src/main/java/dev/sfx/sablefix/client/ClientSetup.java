@@ -54,4 +54,9 @@ public final class ClientSetup {
             if (s != null) s.onDiag(res);
         });
     }
+
+    /** 面板关闭时由 SfxPanelScreen 调用：释放静态引用，避免持有最后一帧数据无法回收。 */
+    static void clearOpenScreen(SfxPanelScreen s) {
+        if (openScreen == s) openScreen = null;
+    }
 }

@@ -93,23 +93,24 @@ public final class SubLevelScan {
         }
         ByteBuffer head = readHead(f);
         int dead = 0, live = 0;
-        for (int i = 0; i < 1024; i++) {
-            long ptr = Integer.toUnsignedLong(head.getInt(i * 4));
-            if (ptr == 0) continue;
-            if (ptr < 4096 || ptr + 5 > size) {
-                dead++;
-                continue;
-            }
-            // 读记录头验证长度
-            ByteBuffer rec = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN);
-            try (FileChannel ch = FileChannel.open(f, StandardOpenOption.READ)) {
+        // 一次打开校验全部指针（旧版每个指针单独 open FileChannel：1024 次系统调用/文件）
+        try (FileChannel ch = FileChannel.open(f, StandardOpenOption.READ)) {
+            for (int i = 0; i < 1024; i++) {
+                long ptr = Integer.toUnsignedLong(head.getInt(i * 4));
+                if (ptr == 0) continue;
+                if (ptr < 4096 || ptr + 5 > size) {
+                    dead++;
+                    continue;
+                }
+                // 读记录头验证长度
+                ByteBuffer rec = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN);
                 if (ch.read(rec, ptr) != 4) { dead++; continue; }
-            }
-            long recLen = Integer.toUnsignedLong(rec.getInt(0));
-            if (recLen < 1 || ptr + 4 + recLen > size) {
-                dead++;
-            } else {
-                live++;
+                long recLen = Integer.toUnsignedLong(rec.getInt(0));
+                if (recLen < 1 || ptr + 4 + recLen > size) {
+                    dead++;
+                } else {
+                    live++;
+                }
             }
         }
         return dead == 0 ? null : new SlvlIssue(f, dead, live, size);

@@ -10,12 +10,17 @@ import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 
 /**
  * E：主线程卡死监视器。
  * 原版看门狗 60 秒直接杀服，且只留下被 park 的那一层栈。
  * 这里在卡死 20 秒时就把全部线程栈写盘，每 15 秒再补一份，
  * 保证下一次 save-all 卡死时能拿到"谁该完成任务却没干"的现场。
+ *
+ * 线程模型：onTick 由主线程调用；loop 由守护线程调用；
+ * 计数器用 Atomic；lastTickNanos volatile（单写多读）。
  */
 public final class ThreadWatchdog {
     private static final long ALERT_NANOS = 20_000_000_000L;
@@ -26,7 +31,7 @@ public final class ThreadWatchdog {
     private static volatile long lastTickNanos = System.nanoTime();
     private static volatile long lastGapMs;
     private static volatile long lastDumpNanos;
-    private static volatile int dumpCount;
+    private static final AtomicInteger DUMPS = new AtomicInteger();
     private static Thread thread;
 
     private ThreadWatchdog() {}
@@ -39,8 +44,7 @@ public final class ThreadWatchdog {
         thread = new Thread(ThreadWatchdog::loop, "SableFix-Watchdog");
         thread.setDaemon(true);
         thread.start();
-        dev.sfx.sablefix.log.ModLog.info("主线程监视器启动：卡死 " + ALERT_NANOS / 1_000_000_000L
-                + " 秒自动抓全线程栈（原版看门狗 60 秒杀服）");
+        ModLogHolder.started();
         SableFixMod.LOGGER.info("主线程监视器已启动（卡死 {}s 抓栈）", ALERT_NANOS / 1_000_000_000L);
     }
 
@@ -60,8 +64,8 @@ public final class ThreadWatchdog {
 
     /** 距上一次 tick 的毫秒数（面板显示用） */
     public static long lastTickGapMs() { return lastGapMs; }
-    /** 本服累计抓栈次数 */
-    public static int dumpCount() { return dumpCount; }
+    /** 本服累计抓栈次数（原子读，供看门狗线程与主线程并发访问） */
+    public static int dumpCount() { return DUMPS.get(); }
 
     private static void loop() {
         while (running) {
@@ -78,12 +82,12 @@ public final class ThreadWatchdog {
         }
     }
 
-    /** 抓一份全线程栈；stallNanos 为 -1 表示手动触发。 */
+    /** 抓一份全线程栈；stallNanos 为 -1 表示手动触发。手动抓栈后重置冷却，避免自动重复抓栈。 */
     public static void dump(long stallNanos) {
         try {
             Path dir = Path.of("logs", "sablefix");
             Files.createDirectories(dir);
-            String stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
+            String stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS"));
             Path out = dir.resolve("threaddump-" + stamp + ".txt");
             try (PrintWriter w = new PrintWriter(Files.newBufferedWriter(out, StandardCharsets.UTF_8))) {
                 w.printf("主线程已 %.1f 秒没有 tick%n", stallNanos / 1_000_000_000.0);
@@ -98,12 +102,24 @@ public final class ThreadWatchdog {
                     w.println();
                 }
             }
-            dumpCount++;
-            dev.sfx.sablefix.log.ModLog.error("主线程已卡 " + stallNanos / 1_000_000_000.0
-                    + " 秒！全线程栈已写入 " + out);
+            DUMPS.incrementAndGet();
+            lastDumpNanos = System.nanoTime();   // 手动抓栈也进冷却，防自动线程紧接着重复抓
+            ModLogHolder.dumped(stallNanos, out);
             SableFixMod.LOGGER.warn("主线程已卡 {} 秒！线程栈已写入 {}", stallNanos / 1_000_000_000.0, out);
         } catch (IOException ex) {
             SableFixMod.LOGGER.error("写线程栈失败", ex);
+        }
+    }
+
+    /** 把 ModLog 依赖收进内部 holder，便于隔离与测试 */
+    private static final class ModLogHolder {
+        static void started() {
+            dev.sfx.sablefix.log.ModLog.info("主线程监视器启动：卡死 " + ALERT_NANOS / 1_000_000_000L
+                    + " 秒自动抓全线程栈（原版看门狗 60 秒杀服）");
+        }
+        static void dumped(long stallNanos, Path out) {
+            dev.sfx.sablefix.log.ModLog.error("主线程已卡 " + stallNanos / 1_000_000_000.0
+                    + " 秒！全线程栈已写入 " + out);
         }
     }
 }

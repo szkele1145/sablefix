@@ -16,6 +16,9 @@ import java.util.zip.GZIPInputStream;
  * B：force-load 票据文件体检（只读）。
  * 文件 = gzip 包着的大端 NBT：root compound -> data compound -> tickets List。
  * 这里只做最保守的事：解得开、读得出条数和 uuid 列表，别的不动。
+ *
+ * v1.1 修复：NBT List-of-int-array（如 UUID 列表直接存为 TAG_List<TAG_Int_Array>）
+ * 旧解析器只处理 List-of-compound，元素为 int 数组时整表被当原始字节跳过 → 计数漏报。
  */
 public final class TicketScan {
 
@@ -57,7 +60,7 @@ public final class TicketScan {
         return new TicketInfo(count, uuids, Files.size(p));
     }
 
-    /** 返回 tickets 条数；遇到 uuid 类型的 int 数组就收集前 16 字节。递归下降足够小文件用。 */
+    /** 返回 tickets 条数；遇到 uuid 形状的 int 数组就收集。递归下降足够小文件用。 */
     private static int parse(byte[] b, List<UUID> uuids) {
         Counter c = new Counter();
         try {
@@ -88,6 +91,18 @@ public final class TicketScan {
                         // 元素 compound 里有 End tag，递归吃掉即可
                         for (int i = 0; i < n; i++) {
                             readPayload(b, p, end, counter, uuids, depth + 1, true);
+                        }
+                    } else if (elemTag == 11) {
+                        // List<int[]>：每个元素是长度前缀 int 数组（老版解析器整表当原始字节跳过 → 漏计）
+                        for (int i = 0; i < n && p.v + 4 <= b.length; i++) {
+                            int len = readInt(b, p);
+                            if (len == 4) { p.v += 16; }                       // DataVersion 之类
+                            else if (len == 16 && p.v + 16 <= b.length) {      // uuid 形状
+                                uuids.add(new UUID(readLong(b, p), readLong(b, p)));
+                                counter.count++;
+                            } else {
+                                p.v += (long) len * 4;
+                            }
                         }
                     } else {
                         int size = payloadSize(elemTag);

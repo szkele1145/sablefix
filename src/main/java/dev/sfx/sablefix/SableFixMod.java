@@ -18,6 +18,9 @@ import org.slf4j.LoggerFactory;
 @Mod(SableFixMod.MODID)
 public class SableFixMod {
     public static final String MODID = "sablefix";
+    public static final String VERSION = "1.1.0";
+    public static final String TG_URL = "https://t.me/maodie_mods";
+    public static final String QQ_GROUP = "1129543042";
     public static final Logger LOGGER = LoggerFactory.getLogger("SableFix");
     /** 进程启动时间（面板显示运行时长用） */
     public static final long START_TIME = System.currentTimeMillis();
