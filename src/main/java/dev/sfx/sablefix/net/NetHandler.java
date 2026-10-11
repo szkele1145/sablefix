@@ -44,13 +44,13 @@ public final class NetHandler {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
-    /** S2C：面板数据。文件行 + 票据 + 看门狗状态 + 维度统计 + 运行日志 */
+    /** S2C：面板数据。文件行 + 票据 + 看门狗状态 + 维度统计 + 运行日志。scanning=true 表示后台扫描未完成，客户端稍后重试。 */
     public record PanelData(
             List<FileRow> files,
             int ticketCount, List<String> ticketUuids,
             long lastTickGapMs, int dumpCount, long uptimeMs,
             List<DimRow> dims,
-            List<String> logLines) implements CustomPacketPayload {
+            List<String> logLines, boolean scanning) implements CustomPacketPayload {
 
         public record FileRow(String name, boolean slvlr, long size, int live, int dead) {}
         public record DimRow(String name, int entities, int blockEntities, int chunks) {}
@@ -128,6 +128,7 @@ public final class NetHandler {
         }
         f.writeVarInt(p.logLines.size());
         for (String line : p.logLines) f.writeUtf(line, 512);
+        f.writeBoolean(p.scanning());
     }
 
     private static PanelData readPanel(FriendlyByteBuf f) {
@@ -151,6 +152,7 @@ public final class NetHandler {
         int ln = Math.min(f.readVarInt(), MAX_LOGS);
         List<String> logs = new ArrayList<>(Math.min(ln, 200));
         for (int i = 0; i < ln; i++) logs.add(f.readUtf(512));
-        return new PanelData(files, tc, uuids, gap, dumps, up, dims, logs);
+        boolean scanning = f.readBoolean();
+        return new PanelData(files, tc, uuids, gap, dumps, up, dims, logs, scanning);
     }
 }

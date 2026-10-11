@@ -18,7 +18,7 @@ import org.slf4j.LoggerFactory;
 @Mod(SableFixMod.MODID)
 public class SableFixMod {
     public static final String MODID = "sablefix";
-    public static final String VERSION = "1.4.0";
+    public static final String VERSION = "1.5.0";
     public static final String TG_URL = "https://t.me/maodie_mods";
     public static final String QQ_GROUP = "1129543042";
     public static final Logger LOGGER = LoggerFactory.getLogger("SableFix");

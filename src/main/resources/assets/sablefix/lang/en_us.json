@@ -48,7 +48,7 @@
   "sablefix.panel.log_scrolled": " · scrolled up %s lines",
   "sablefix.panel.log_hint": "Scroll back down to reset",
   "sablefix.panel.about_qq": "Feedback QQ group 1129543042",
-  "sablefix.panel.about_ver": "Sable Fix Core v1.4.0 — Sable save self-healing & diagnostics",
+  "sablefix.panel.about_ver": "Sable Fix Core v1.5.0 — Sable save self-healing & diagnostics",
   "sablefix.panel.about_what": "What it does",
   "sablefix.panel.about_what1": "Sable (Aeronautics) ships and airships live in separate sublevel files.",
   "sablefix.panel.about_what2": "Corrupted pointers there fail silently — structures just vanish;",
@@ -129,5 +129,7 @@
   "sablefix.panel.filter_ok": "Healthy",
   "sablefix.panel.sort_name": "Name",
   "sablefix.panel.sort_size": "Size",
-  "sablefix.panel.sort_dead": "Dead"
+  "sablefix.panel.sort_dead": "Dead",
+  "sablefix.panel.scanning": "Background scan running…",
+  "sablefix.panel.scanning_retry": "Auto-refreshes when done (retrying every ~2 s)"
 }

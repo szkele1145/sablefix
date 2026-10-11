@@ -74,7 +74,7 @@ public class SfxPanelScreen extends Screen {
                 "16:34:23.602 [WARN] r.-4.7.slvlr: 3 dead pointers (74 live)",
                 "16:34:23.711 [INFO] tickets: 19 force-load tickets, gzip/NBT OK (707 B)",
                 "16:51:08.332 [INFO] panel request: Dev@[/127.0.0.1]");
-        return new NetHandler.PanelData(files, 19, uuids, 41, 0, 22_320_000L, dims, logs);
+        return new NetHandler.PanelData(files, 19, uuids, 41, 0, 22_320_000L, dims, logs, false);
     }
 
     static NetHandler.DiagRes demoDiag() {
@@ -148,7 +148,20 @@ public class SfxPanelScreen extends Screen {
         } catch (NumberFormatException ignored) {}
     }
 
-    public void onData(NetHandler.PanelData d) { this.data = d; animStart = Util.getMillis(); }
+    public void onData(NetHandler.PanelData d) {
+        boolean wasScanning = data != null && data.scanning();
+        this.data = d;
+        animStart = Util.getMillis();
+        // 后台首扫期间：2 秒后自动重拉，直到拿到全量数据
+        if (d.scanning()) {
+            Minecraft.getInstance().execute(() -> new java.lang.Thread(() -> {
+                try { java.lang.Thread.sleep(2000); } catch (InterruptedException ignored) { return; }
+                Minecraft.getInstance().execute(this::request);
+            }, "SableFix-Panel-Retry").start());
+        } else if (wasScanning) {
+            animStart = Util.getMillis();   // 扫描完成，重播淡入
+        }
+    }
     public void onDiag(NetHandler.DiagRes r) { this.diagRes = r; }
 
     // ================= 交互 =================
@@ -338,6 +351,7 @@ public class SfxPanelScreen extends Screen {
     // ---- 总览 ----
     private void pageHome(GuiGraphics g, int x, int y, int w, int h, int mx, int my, int a) {
         if (data == null) { loadingCard(g, x, y, a); return; }
+        if (data.scanning()) { scanningCard(g, x, y, a); return; }
         boolean tickOk = data.lastTickGapMs() < 500;
         int cy = y + 4;
         int ch = 46;
@@ -394,6 +408,7 @@ public class SfxPanelScreen extends Screen {
     // ---- 体检 ----
     private void pageHealth(GuiGraphics g, int x, int y, int w, int h, int mx, int my, int a) {
         if (data == null) { loadingCard(g, x, y, a); return; }
+        if (data.scanning()) { scanningCard(g, x, y, a); return; }
         title(g, x, y, L("sablefix.panel.tab.health"), a);
         int issues = (int) data.files().stream().filter(f -> f.dead() > 0).count();
         banner(g, x, y + 16, w, 26, issues == 0,
@@ -541,6 +556,7 @@ public class SfxPanelScreen extends Screen {
 
     private void pageBrowse(GuiGraphics g, int x, int y, int w, int h, int mx, int my, int a) {
         if (data == null) { loadingCard(g, x, y, a); return; }
+        if (data.scanning()) { scanningCard(g, x, y, a); return; }
         title(g, x, y, L("sablefix.panel.tab.browse"), a);
 
         // 过滤 chips 行（y+16）
@@ -651,6 +667,7 @@ public class SfxPanelScreen extends Screen {
     // ---- 监视 ----
     private void pageWatch(GuiGraphics g, int x, int y, int w, int h, int mx, int my, int a) {
         if (data == null) { loadingCard(g, x, y, a); return; }
+        if (data.scanning()) { scanningCard(g, x, y, a); return; }
         title(g, x, y, L("sablefix.panel.tab.watch"), a);
         boolean ok = data.lastTickGapMs() < 500;
         banner(g, x, y + 16, w, 26, ok,
@@ -699,6 +716,17 @@ public class SfxPanelScreen extends Screen {
         g.drawString(font, L("sablefix.panel.loading"), x + 16, y + 36, withA(DIM, a), false);
     }
 
+    /** 后台扫描未完成：脉冲圆点 + 自动重试提示 */
+    private void scanningCard(GuiGraphics g, int x, int y, int a) {
+        roundRect(g, x, y + 22, 240, 46, 10, CARD, BORDER | a);
+        long t = Util.getMillis();
+        float phase = (t % 1200) / 1200f;
+        int alphaPulse = (int) (140 + 100 * Math.sin(phase * Math.PI));
+        dot(g, x + 24, y + 44, 4, (alphaPulse << 24) | (WARN & 0x00FFFFFF));
+        g.drawString(font, L("sablefix.panel.scanning"), x + 36, y + 38, withA(DIM, a), false);
+        g.drawString(font, L("sablefix.panel.scanning_retry"), x + 16, y + 52, withA(FAINT, a), false);
+    }
+
     private void statCard(GuiGraphics g, int x, int y, int w, int h, String label, String value,
                           int color, float scale, int a, int mx, int my) {
         boolean hov = inBox(mx, my, x, y, w, h);
@@ -728,6 +756,7 @@ public class SfxPanelScreen extends Screen {
     // ---- 运行日志 ----
     private void pageLog(GuiGraphics g, int x, int y, int w, int h, int mx, int my, int a) {
         if (data == null) { loadingCard(g, x, y, a); return; }
+        if (data.scanning()) { scanningCard(g, x, y, a); return; }
         int ly = y + 4;
         int cardH = h - 8;
         roundRect(g, x, ly, w, cardH, 10, CARD, BORDER | a);

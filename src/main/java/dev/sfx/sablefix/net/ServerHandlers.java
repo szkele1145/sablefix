@@ -38,6 +38,10 @@ public final class ServerHandlers {
     private record CachedScan(SubLevelScan.Report report, List<String> ticketUuids,
                               int ticketCount, long at) {}
 
+    /** 首扫未完成时回给面板的占位报告（客户端据 scanning 标志显示"扫描中"并自动重试）。 */
+    private static final CachedScan COLD_SCAN = new CachedScan(
+            new SubLevelScan.Report(List.of(), List.of(), 0, 0), List.of(), 0, Long.MIN_VALUE);
+
     public static void onPanelReq(IPayloadContext ctx) {
         if (!(ctx.player() instanceof ServerPlayer player)) return;
         // 与 /sablefix 命令同级权限：文件名/票据/日志属诊断信息，不对普通玩家开放
@@ -51,8 +55,19 @@ public final class ServerHandlers {
 
             CachedScan cached = SCAN_CACHE.get();
             if (cached == null) {
-                cached = buildScan(sublevels, server);
-                SCAN_CACHE.set(cached);
+                // 首扫也进后台：立即回"空报告+扫描中"标记，扫完后面板自动刷新拿全量
+                if (SCAN_RUNNING.compareAndSet(0, 1)) {
+                    CompletableFuture.runAsync(() -> {
+                        try {
+                            SCAN_CACHE.set(buildScan(sublevels, server));
+                        } catch (Exception e) {
+                            SableFixMod.LOGGER.warn("后台首扫失败", e);
+                        } finally {
+                            SCAN_RUNNING.set(0);
+                        }
+                    });
+                }
+                cached = COLD_SCAN;
             } else if (System.currentTimeMillis() - cached.at() > CACHE_TTL_MS
                     && SCAN_RUNNING.compareAndSet(0, 1)) {
                 // 过期：立即回旧数据 + 后台重扫（扫描纯文件 IO，不碰 MC API，线程安全）
@@ -103,7 +118,7 @@ public final class ServerHandlers {
             NetHandler.PanelData data = new NetHandler.PanelData(
                     files, ticketCount, uuids,
                     ThreadWatchdog.lastTickGapMs(), ThreadWatchdog.dumpCount(), uptime, dims,
-                    logLines);
+                    logLines, cached == COLD_SCAN);
             ctx.reply(data);
         } catch (Exception e) {
             SableFixMod.LOGGER.error("面板数据生成失败", e);
