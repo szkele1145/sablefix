@@ -13,8 +13,14 @@ import java.util.List;
 /** 全部网络包定义 + 注册。C2S=客户端发服务端，S2C=服务端发客户端。 */
 public final class NetHandler {
 
+    /** 协议版本：**任何**增删/改通道负载格式时必须 +1。两端版本号不一致会在握手期被
+     *  NeoForge 拒绝并给出清晰提示，而不是运行期才"网络通道抽风"。
+     *  v1: 1.0.0–1.3.0（panel/diag + repair + purge，期间变更未 bump 是历史教训）
+     *  v2: 1.3.1 起（DiagRes.errorKey 客户端本地化 + 发送侧截断语义确立） */
+    public static final String PROTOCOL_VERSION = "2";
+
     public static void register(net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent event) {
-        PayloadRegistrar reg = event.registrar("1");
+        PayloadRegistrar reg = event.registrar(PROTOCOL_VERSION);
         reg.playToServer(PanelReq.TYPE, PanelReq.CODEC, (p, ctx) ->
                 ctx.enqueueWork(() -> ServerHandlers.onPanelReq(ctx)));
         reg.playToClient(PanelData.TYPE, PanelData.CODEC, (p, ctx) ->
