@@ -145,7 +145,11 @@ public final class NetHandler {
         int maxFiles = 512, maxUuids = 512, maxLogs = 150;
         List<PanelData.FileRow> files = p.files.size() > maxFiles ? p.files.subList(0, maxFiles) : p.files;
         List<String> uuids = p.ticketUuids.size() > maxUuids ? p.ticketUuids.subList(0, maxUuids) : p.ticketUuids;
-        List<String> logs = p.logLines.size() > maxLogs ? p.logLines.subList(0, maxLogs) : p.logLines;
+        // logs 截断方向修正：ModLog 快照"最新在后"，取头部=丢最新留最旧（排障最需要的恰是最新）。
+        // 修正为保留尾部（最新）maxLogs 条。
+        List<String> logs = p.logLines.size() > maxLogs
+                ? p.logLines.subList(p.logLines.size() - maxLogs, p.logLines.size())
+                : p.logLines;
 
         f.writeVarInt(files.size());
         for (PanelData.FileRow r : files) {

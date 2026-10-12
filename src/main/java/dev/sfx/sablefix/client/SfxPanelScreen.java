@@ -68,6 +68,15 @@ public class SfxPanelScreen extends Screen {
         super(Component.translatable("sablefix.panel.title"));
     }
 
+    /** 面板关闭（含 ESC/切屏）：释放 ClientSetup.openScreen 静态引用——
+     *  终局审计：clearOpenScreen 此前 0 调用（死代码），openScreen 永持已关面板 →
+     *  对象泄漏 + 服务端回包继续投递给已关 UI。removed() 覆盖 onClose/切屏/断线三条路径。 */
+    @Override
+    public void removed() {
+        super.removed();
+        dev.sfx.sablefix.client.ClientSetup.clearOpenScreen(this);
+    }
+
     // ================= 演示数据（截图/录屏用） =================
     static NetHandler.PanelData demoData() {
         var files = java.util.List.of(
