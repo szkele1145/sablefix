@@ -35,6 +35,16 @@ public final class ServerHandlers {
     private static final long CACHE_TTL_MS = 60_000L;
     private static final AtomicReference<CachedScan> SCAN_CACHE = new AtomicReference<>();
     private static final AtomicLong SCAN_RUNNING = new AtomicLong();
+    /** 扫描专用单线程守护池：不占公共 ForkJoinPool（大存档扫描不饿饿其他并行流任务），守护线程随服务器退出自动消亡 */
+    private static final java.util.concurrent.ExecutorService SCAN_POOL =
+            java.util.concurrent.Executors.newSingleThreadExecutor(r -> {
+                Thread t = new Thread(r, "SableFix-Scan");
+                t.setDaemon(true);
+                return t;
+            });
+    /** 失败冷却：首扫/重扫抛异常后，30s 内不再重试（防止坏存档导致无限失败循环），给用户真实错误而非永久 scanning */
+    private static final long SCAN_FAILURE_COOLDOWN_MS = 30_000L;
+    private static volatile long lastScanFailureAt = Long.MIN_VALUE;
 
     private record CachedScan(SubLevelScan.Report report, List<String> ticketUuids,
                               int ticketCount, long at) {}
@@ -42,6 +52,10 @@ public final class ServerHandlers {
     /** 首扫未完成时回给面板的占位报告（客户端据 scanning 标志显示"扫描中"并自动重试）。 */
     private static final CachedScan COLD_SCAN = new CachedScan(
             new SubLevelScan.Report(List.of(), List.of(), 0, 0), List.of(), 0, Long.MIN_VALUE);
+
+    /** 首扫失败冷却期的占位（ticketCount=-2；客户端据 scanning=false + 空 files 显示冷却提示，服务器日志有真实错误）。 */
+    private static final CachedScan SCAN_FAILED = new CachedScan(
+            new SubLevelScan.Report(List.of(), List.of(), 0, 0), List.of(), -2, Long.MIN_VALUE);
 
     public static void onPanelReq(IPayloadContext ctx) {
         if (!(ctx.player() instanceof ServerPlayer player)) return;
@@ -56,23 +70,26 @@ public final class ServerHandlers {
 
             CachedScan cached = SCAN_CACHE.get();
             if (cached == null) {
-                // 首扫也进后台：立即回"空报告+扫描中"标记，扫完后面板自动刷新拿全量
-                if (SCAN_RUNNING.compareAndSet(0, 1)) {
-                    CompletableFuture.runAsync(() -> {
+                // 首扫也进后台：立即回"空报告+扫描中"标记，扫完后面板自动刷新拿全量。
+                // 失败冷却期内不再重试（坏存档/IO 故障时避免无限失败循环），改回明确错误状态。
+                boolean coolingDown = System.currentTimeMillis() - lastScanFailureAt < SCAN_FAILURE_COOLDOWN_MS;
+                if (!coolingDown && SCAN_RUNNING.compareAndSet(0, 1)) {
+                    SCAN_POOL.execute(() -> {
                         try {
                             SCAN_CACHE.set(buildScan(sublevels, server));
                         } catch (Exception e) {
-                            SableFixMod.LOGGER.warn("后台首扫失败", e);
+                            lastScanFailureAt = System.currentTimeMillis();
+                            SableFixMod.LOGGER.warn("后台首扫失败（30s 冷却）", e);
                         } finally {
                             SCAN_RUNNING.set(0);
                         }
                     });
                 }
-                cached = COLD_SCAN;
+                cached = coolingDown ? SCAN_FAILED : COLD_SCAN;
             } else if (System.currentTimeMillis() - cached.at() > CACHE_TTL_MS
                     && SCAN_RUNNING.compareAndSet(0, 1)) {
                 // 过期：立即回旧数据 + 后台重扫（扫描纯文件 IO，不碰 MC API，线程安全）
-                CompletableFuture.runAsync(() -> {
+                SCAN_POOL.execute(() -> {
                     try {
                         SCAN_CACHE.set(buildScan(sublevels, server));
                     } catch (Exception e) {
@@ -122,7 +139,7 @@ public final class ServerHandlers {
             NetHandler.PanelData data = new NetHandler.PanelData(
                     files, ticketCount, uuids,
                     ThreadWatchdog.lastTickGapMs(), ThreadWatchdog.dumpCount(), uptime, dims,
-                    logLines, cached == COLD_SCAN);
+                    logLines, cached == COLD_SCAN || cached == SCAN_FAILED);
             ctx.reply(data);
         } catch (Exception e) {
             SableFixMod.LOGGER.error("面板数据生成失败", e);
