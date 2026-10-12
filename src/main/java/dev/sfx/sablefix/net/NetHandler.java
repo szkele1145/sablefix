@@ -134,24 +134,31 @@ public final class NetHandler {
     private static final int MAX_LOGS = 400;
 
     private static void writePanel(FriendlyByteBuf f, PanelData p) {
-        f.writeVarInt(p.files.size());
-        for (PanelData.FileRow r : p.files) {
-            f.writeUtf(r.name()); f.writeBoolean(r.slvlr());
+        // 发送侧硬截断（防帧超限：超大存档 files×name 最坏 300KB+、logs 200KB → 总量逼近 1MB 断线阈值。
+        // 抽风的根因：NeoForge 对超限 play 载荷直接断开连接。截断优先保命，面板显示"N 项已省略"提示行。）
+        int maxFiles = 512, maxUuids = 512, maxLogs = 150;
+        List<PanelData.FileRow> files = p.files.size() > maxFiles ? p.files.subList(0, maxFiles) : p.files;
+        List<String> uuids = p.ticketUuids.size() > maxUuids ? p.ticketUuids.subList(0, maxUuids) : p.ticketUuids;
+        List<String> logs = p.logLines.size() > maxLogs ? p.logLines.subList(0, maxLogs) : p.logLines;
+
+        f.writeVarInt(files.size());
+        for (PanelData.FileRow r : files) {
+            f.writeUtf(r.name(), 128); f.writeBoolean(r.slvlr());
             f.writeVarLong(r.size()); f.writeVarInt(r.live()); f.writeVarInt(r.dead());
         }
         f.writeVarInt(p.ticketCount());
-        f.writeVarInt(p.ticketUuids.size());
-        for (String u : p.ticketUuids) f.writeUtf(u);
+        f.writeVarInt(uuids.size());
+        for (String u : uuids) f.writeUtf(u, 64);
         f.writeVarLong(p.lastTickGapMs());
         f.writeVarInt(p.dumpCount());
         f.writeVarLong(p.uptimeMs());
         f.writeVarInt(p.dims.size());
         for (PanelData.DimRow d : p.dims) {
-            f.writeUtf(d.name()); f.writeVarInt(d.entities());
+            f.writeUtf(d.name(), 128); f.writeVarInt(d.entities());
             f.writeVarInt(d.blockEntities()); f.writeVarInt(d.chunks());
         }
-        f.writeVarInt(p.logLines.size());
-        for (String line : p.logLines) f.writeUtf(line, 512);
+        f.writeVarInt(logs.size());
+        for (String line : logs) f.writeUtf(line, 384);
         f.writeBoolean(p.scanning());
     }
 
