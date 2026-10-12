@@ -94,9 +94,16 @@ public final class SubLevelRepair {
                 ? dir.getParent().resolve("backups").resolve("sablefix")  // …/world/backups/sablefix（锚定存档，不依赖 CWD）
                 : Path.of("backups", "sablefix");
         Files.createDirectories(backupDir);
-        String stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
+        String stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS"));   // 含毫秒：同秒多次修复不互相覆盖
         Path backup = backupDir.resolve(plan.file().getFileName() + "." + stamp + ".bak");
         Files.copy(plan.file(), backup, StandardCopyOption.REPLACE_EXISTING);
+
+        // 写回前重扫：备份与写回之间文件若被并发修改（Sable 运行时），死槽位号可能已变——按计划盲写会破坏新数据。
+        // 保守策略：重扫结果与计划不一致就放弃本次修复（备份保留，报错给上层）。
+        RepairPlan rechecked = plan(plan.file());
+        if (!rechecked.slots().equals(plan.slots())) {
+            throw new IOException("file changed since plan (concurrent write?) — repair aborted, backup kept: " + backup);
+        }
 
         int cleared = 0;
         try (RandomAccessFile raf = new RandomAccessFile(plan.file().toFile(), "rw")) {
