@@ -122,7 +122,7 @@ public final class SaveObserver {
                 if (t == null) return new Track(now, false);
                 long stalledMs = (now - t.sinceNanos()) / 1_000_000L;
                 if (!t.registered() && stalledMs >= PENDING_THRESHOLD_MS) {
-                    DamageRegistry.register(DamageRegistry.Kind.SUBLVL_DEAD,
+                    DamageRegistry.register(DamageRegistry.Kind.SAVE_STALLED,
                             k + " (save pending " + stalledMs + "ms)", 1);
                     SableFixMod.LOGGER.warn("保存 future 卡住 {}：{}ms 未完成（已登记损伤）", k, stalledMs);
                     return new Track(t.sinceNanos(), true);

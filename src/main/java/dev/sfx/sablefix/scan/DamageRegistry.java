@@ -30,7 +30,9 @@ public final class DamageRegistry {
         /** .slvlr/.slvls 死指针/坏条目 */
         SUBLVL_DEAD,
         /** force-load 票据异常堆积 */
-        TICKETS_STUCK
+        TICKETS_STUCK,
+        /** 保存管线卡住（SaveObserver：区块保存 future 长时间未完成） */
+        SAVE_STALLED
     }
 
     public static final class Entry {
