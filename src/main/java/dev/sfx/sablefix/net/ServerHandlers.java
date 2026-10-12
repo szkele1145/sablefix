@@ -95,7 +95,10 @@ public final class ServerHandlers {
             }
             int healthy = r.scannedSlvlr() + r.scannedSlvls() - r.slvlr().size() - r.slvls().size();
             if (healthy > 0) {
-                files.add(new NetHandler.PanelData.FileRow("（其余 " + healthy + " 个文件全部健康）", true, -1, -1, 0));
+                // 复用 GUI 的 browse_healthy key：服务端按服务器 locale 渲染，客户端英文界面也能读懂
+                files.add(new NetHandler.PanelData.FileRow(
+                        net.minecraft.network.chat.Component.translatable("sablefix.panel.browse_healthy", healthy).getString(),
+                        true, -1, -1, 0));
             }
 
             int ticketCount = cached.ticketCount();
