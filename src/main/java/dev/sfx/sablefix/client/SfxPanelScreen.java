@@ -185,16 +185,21 @@ public class SfxPanelScreen extends Screen {
         boolean wasScanning = data != null && data.scanning();
         this.data = d;
         animStart = Util.getMillis();
-        // 后台首扫期间：2 秒后自动重拉，直到拿到全量数据
+        // 后台首扫期间：指数退避重拉（2s→4s→8s 封顶），拿到全量后复位。
+        // 多管理员同时开面板时服务端只有一次真重扫，退避避免重试风暴。
         if (d.scanning()) {
+            final long backoff = Math.min(8000, 1000L << Math.min(3, scanRetries++));
             Minecraft.getInstance().execute(() -> new java.lang.Thread(() -> {
-                try { java.lang.Thread.sleep(2000); } catch (InterruptedException ignored) { return; }
+                try { java.lang.Thread.sleep(backoff); } catch (InterruptedException ignored) { return; }
                 Minecraft.getInstance().execute(this::request);
             }, "SableFix-Panel-Retry").start());
-        } else if (wasScanning) {
-            animStart = Util.getMillis();   // 扫描完成，重播淡入
+        } else {
+            scanRetries = 0;
+            if (wasScanning) animStart = Util.getMillis();   // 扫描完成，重播淡入
         }
     }
+
+    private int scanRetries;
     public void onDiag(NetHandler.DiagRes r) { this.diagRes = r; }
 
     // ================= 交互 =================

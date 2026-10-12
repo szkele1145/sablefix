@@ -4,7 +4,9 @@ Sable 存档自愈与诊断核心（Minecraft 1.21.1 / NeoForge 21.1.x，单 jar
 
 ## 它解决什么
 
-专治 Sable + c2me 组合下的疑难杂症（以「建设世界」服务器 2026-10-10 事故为原型）：
+**定位先说清楚：诊断优先，修复为辅。** 死锁的根因通常在别的模组的代码里（本例：两个 mod 同时 patch `ChunkMap#saveAllChunks`），任何模组都无法从外部修好这种冲突——但它能让你 30 秒知道该摘谁。摘掉后连跑几天没再卡，靠的正是这份线程栈。
+
+以「建设世界」服务器 2026-10-10 事故为原型：
 
 - **`save-all` 卡死 60 秒被看门狗杀服** —— 根因是多个模组同时 patch `ChunkMap#saveAllChunks`
   （实测凶手：`chunktreefix 1.1.2` / chunksavefixport，与 c2me 区块系统重写撞车）。
