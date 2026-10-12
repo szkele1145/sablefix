@@ -45,6 +45,8 @@ public final class TicketScan {
         } catch (Exception e) {
             dev.sfx.sablefix.log.ModLog.error("票据体检失败：票据文件可能损坏 — " + e.getMessage());
             SableFixMod.LOGGER.error("票据体检失败：票据文件可能损坏，用 /sablefix tickets 查看", e);
+            // 票据文件本身损坏（解不开）：登记，提示可 tickets-purge 重建
+            DamageRegistry.register(DamageRegistry.Kind.TICKETS_STUCK, "<corrupted ticket file>", 1);
         }
     }
 

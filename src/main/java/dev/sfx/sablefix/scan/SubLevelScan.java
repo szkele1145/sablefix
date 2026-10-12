@@ -61,6 +61,8 @@ public final class SubLevelScan {
         } catch (Exception e) {
             dev.sfx.sablefix.log.ModLog.error("子层级体检失败：" + e.getMessage());
             SableFixMod.LOGGER.error("子层级体检失败（不影响服务器运行）", e);
+            // 体检本身失败（目录不可读/IO 故障）：登记一个整卷级损伤，提醒不再静默
+            DamageRegistry.register(DamageRegistry.Kind.SUBLVL_DEAD, "<sublevels scan failed>", 1);
         }
     }
 
