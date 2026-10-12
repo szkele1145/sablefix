@@ -159,5 +159,7 @@
   "sablefix.cmd.diag_header": "区块诊断 [%s, %s]：%s",
   "sablefix.cmd.diag_dim": "  维度: %s",
   "sablefix.cmd.diag_entities": "  实体: %s",
-  "sablefix.cmd.diag_be": "  方块实体: %s"
+  "sablefix.cmd.diag_be": "  方块实体: %s",
+  "sablefix.damage.admin_notice": "§6[SableFix] §c检测到未处置损伤：%s（%s 处）§7——用 /sablefix repair 修复，详见控制台",
+  "sablefix.damage.player_notice": "§6[SableFix] §e服务器存档存在已知损伤，正在由管理员处理，不影响游玩"
 }

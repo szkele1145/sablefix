@@ -38,6 +38,10 @@ public final class TicketScan {
             dev.sfx.sablefix.log.ModLog.info("票据体检完成：" + info.count() + " 条 force-load 票据，gzip/NBT 解析正常（"
                     + info.fileSize() + " 字节）");
             SableFixMod.LOGGER.info("票据体检：{} 条票据，文件 {} 字节，gzip/NBT 可正常解析", info.count(), info.fileSize());
+            // 异常堆积登记（阈值 100 条：正常服务器极少超过个位数；幽灵加载点案例是 2533 条）
+            if (info.count() >= 100) {
+                DamageRegistry.register(DamageRegistry.Kind.TICKETS_STUCK, p.getFileName().toString(), info.count());
+            }
         } catch (Exception e) {
             dev.sfx.sablefix.log.ModLog.error("票据体检失败：票据文件可能损坏 — " + e.getMessage());
             SableFixMod.LOGGER.error("票据体检失败：票据文件可能损坏，用 /sablefix tickets 查看", e);

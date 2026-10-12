@@ -26,6 +26,8 @@ public final class ThreadWatchdog {
     private static final long ALERT_NANOS = 20_000_000_000L;
     private static final long REDUMP_NANOS = 15_000_000_000L;
     private static final long POLL_MILLIS = 5_000L;
+    /** 损伤登记簿的周期提醒间隔（DamageRegistry.periodicWarn 使用） */
+    public static final long WARN_PERIOD_MS = 5 * 60_000L;
 
     private static volatile boolean running;
     private static volatile long lastTickNanos = System.nanoTime();

@@ -159,5 +159,7 @@
   "sablefix.cmd.diag_header": "Chunk diag [%s, %s]: %s",
   "sablefix.cmd.diag_dim": "  Dimension: %s",
   "sablefix.cmd.diag_entities": "  Entities: %s",
-  "sablefix.cmd.diag_be": "  Block entities: %s"
+  "sablefix.cmd.diag_be": "  Block entities: %s",
+  "sablefix.damage.admin_notice": "§6[SableFix] §cUnresolved damage detected: %s (%s) §7— repair with /sablefix, see console",
+  "sablefix.damage.player_notice": "§6[SableFix] §eKnown save damage is being handled by admins — gameplay unaffected"
 }

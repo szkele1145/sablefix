@@ -48,9 +48,11 @@ public final class SubLevelScan {
                 for (SlvlIssue i : r.slvlr()) {
                     dev.sfx.sablefix.log.ModLog.warn(i.file().getFileName() + "：" + i.deadPointers()
                             + " 个死指针（有效 " + i.livePointers() + "）");
+                    DamageRegistry.register(DamageRegistry.Kind.SUBLVL_DEAD, i.file().getFileName().toString(), i.deadPointers());
                 }
                 for (SlvlsIssue i : r.slvls()) {
                     dev.sfx.sablefix.log.ModLog.warn(i.file().getFileName() + "：" + i.badEntries() + " 个坏条目");
+                    DamageRegistry.register(DamageRegistry.Kind.SUBLVL_DEAD, i.file().getFileName().toString(), i.badEntries());
                 }
                 dev.sfx.sablefix.log.ModLog.warn("子层级体检完成：共 " + dead + " 死指针 / " + bad + " 坏条目，用面板「存档体检」页查看");
                 SableFixMod.LOGGER.warn("子层级体检：{} 个文件共 {} 个死指针 / {} 个坏条目，用 /sablefix check 查看",
