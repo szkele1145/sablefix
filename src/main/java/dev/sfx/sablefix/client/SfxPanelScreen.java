@@ -760,9 +760,14 @@ public class SfxPanelScreen extends Screen {
             return;
         }
         boolean loaded = diagRes.loaded();
-        dot(g, x + 22, cy2 + 18, 5, withA(loaded ? OK : WARN, a));
-        dtr(g, "(" + diagRes.x() + ", " + diagRes.z() + ")  " + diagRes.status(),
-                x + 34, cy2 + 12, w - 48, withA(loaded ? OK : WARN, a), false);
+        // 状态行客户端本地化：正常=加载/未加载；errorKey 非空=服务器报错（跨语言不串台）
+        boolean errored = !diagRes.errorKey().isEmpty();
+        String statusText = errored ? L(diagRes.errorKey())
+                : L(loaded ? "sablefix.diag.loaded" : "sablefix.diag.not_loaded");
+        int statusColor = errored ? BAD : (loaded ? OK : WARN);
+        dot(g, x + 22, cy2 + 18, 5, withA(statusColor, a));
+        dtr(g, "(" + diagRes.x() + ", " + diagRes.z() + ")  " + statusText,
+                x + 34, cy2 + 12, w - 48, withA(statusColor, a), false);
         g.drawString(font, L("sablefix.panel.diag_dim"), x + 22, cy2 + 40, withA(FAINT, a), false);
         dtr(g, diagRes.dim(), x + 90, cy2 + 40, w - 104, withA(TEXT, a), false);
         g.drawString(font, L("sablefix.panel.entities"), x + 22, cy2 + 58, withA(FAINT, a), false);

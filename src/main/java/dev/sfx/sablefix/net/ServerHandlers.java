@@ -260,20 +260,20 @@ public final class ServerHandlers {
             LevelChunk chunk = level.getChunkSource().getChunkNow(cx, cz);
             boolean loaded = chunk != null;
             int entities = 0, blockEntities = 0;
-            String status = net.minecraft.network.chat.Component.translatable(loaded ? "sablefix.diag.loaded" : "sablefix.diag.not_loaded").getString();
+            // status 由客户端按 loaded 本地化（服务器 locale ≠ 客户端语言时不串台）
             if (loaded) {
                 AABB box = new AABB(cx * 16.0, level.getMinBuildHeight(), cz * 16.0,
                         cx * 16.0 + 16, level.getMaxBuildHeight(), cz * 16.0 + 16);
                 entities = level.getEntities(EntityTypeTest.forClass(Entity.class), box, e -> true).size();
                 blockEntities = chunk.getBlockEntities().size();
             }
-            ctx.reply(new NetHandler.DiagRes(req.x(), req.z(), loaded, status, entities, blockEntities,
+            ctx.reply(new NetHandler.DiagRes(req.x(), req.z(), loaded, "", entities, blockEntities,
                     level.dimension().location().toString()));
         } catch (Exception e) {
             SableFixMod.LOGGER.error("诊断失败", e);
             // 失败也要回包：客户端 diagRes==null 只会一直显示"等待查询"，永远不知道出错了
             ctx.reply(new NetHandler.DiagRes(req.x(), req.z(), false,
-                    net.minecraft.network.chat.Component.translatable("sablefix.diag.error").getString(),
+                    "sablefix.diag.error",
                     0, 0, player.serverLevel().dimension().location().toString()));
         }
     }

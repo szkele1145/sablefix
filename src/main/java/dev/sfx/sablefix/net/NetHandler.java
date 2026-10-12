@@ -115,15 +115,15 @@ public final class NetHandler {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
-    /** S2C：区块诊断结果 */
-    public record DiagRes(int x, int z, boolean loaded, String status,
+    /** S2C：区块诊断结果。errorKey 非空=查询失败（客户端本地化渲染，避免服务器 locale 泄漏到客户端）。 */
+    public record DiagRes(int x, int z, boolean loaded, String errorKey,
                           int entities, int blockEntities, String dim) implements CustomPacketPayload {
         public static final Type<DiagRes> TYPE = new Type<>(id("diag_res"));
         public static final StreamCodec<FriendlyByteBuf, DiagRes> CODEC = StreamCodec.of(
                 (b, p) -> { b.writeVarInt(p.x); b.writeVarInt(p.z); b.writeBoolean(p.loaded);
-                        b.writeUtf(p.status); b.writeVarInt(p.entities); b.writeVarInt(p.blockEntities); b.writeUtf(p.dim); },
-                b -> new DiagRes(b.readVarInt(), b.readVarInt(), b.readBoolean(), b.readUtf(),
-                        b.readVarInt(), b.readVarInt(), b.readUtf()));
+                        b.writeUtf(p.errorKey, 64); b.writeVarInt(p.entities); b.writeVarInt(p.blockEntities); b.writeUtf(p.dim, 128); },
+                b -> new DiagRes(b.readVarInt(), b.readVarInt(), b.readBoolean(), b.readUtf(64),
+                        b.readVarInt(), b.readVarInt(), b.readUtf(128)));
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
