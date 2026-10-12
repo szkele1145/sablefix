@@ -120,6 +120,9 @@ public final class SubLevelRepair {
             }
         }
         SableFixMod.LOGGER.warn("子层级修复：{} 清零 {} 个槽位（备份 {}）", plan.file().getFileName(), cleared, backup);
+        // 闭环：修复成功即从损伤登记簿移除（周期 WARN 停止、玩家进服不再提示）
+        String fname = plan.file().getFileName().toString();
+        DamageRegistry.clear(DamageRegistry.Kind.SUBLVL_DEAD, fname);
         return new RepairResult(plan.file(), backup, cleared);
     }
 

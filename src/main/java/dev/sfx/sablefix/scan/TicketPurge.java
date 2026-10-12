@@ -71,6 +71,8 @@ public final class TicketPurge {
         Files.move(tmp, p, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
 
         SableFixMod.LOGGER.warn("票据清理：{} 原 {} 条已清零（备份 {}）", p.getFileName(), parsed.ticketCount(), backup);
+        // 闭环：票据清零即移除登记
+        DamageRegistry.clear(DamageRegistry.Kind.TICKETS_STUCK, p.getFileName().toString());
         return backup;
     }
 
