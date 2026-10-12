@@ -154,5 +154,10 @@
   "sablefix.panel.purge_done_gui": "✓ Tickets cleared: %s (effective after restart, backup in chat)",
   "sablefix.panel.purge_plan": "Dry run: %s ticket(s) to clear (other NBT fields kept)",
   "sablefix.cmd.repair_all_progress": "§7[%s/%s]§f %s — ✓ cleared %s slot(s)",
-  "sablefix.cmd.repair_all_progress_fail": "§7[%s/%s]§f %s — ✗ failed (see log)"
+  "sablefix.cmd.repair_all_progress_fail": "§7[%s/%s]§f %s — ✗ failed (see log)",
+  "sablefix.diag.error": "Diagnostic query failed (see server log)",
+  "sablefix.cmd.diag_header": "Chunk diag [%s, %s]: %s",
+  "sablefix.cmd.diag_dim": "  Dimension: %s",
+  "sablefix.cmd.diag_entities": "  Entities: %s",
+  "sablefix.cmd.diag_be": "  Block entities: %s"
 }

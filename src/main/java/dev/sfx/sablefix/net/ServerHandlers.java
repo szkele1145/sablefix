@@ -271,6 +271,10 @@ public final class ServerHandlers {
                     level.dimension().location().toString()));
         } catch (Exception e) {
             SableFixMod.LOGGER.error("诊断失败", e);
+            // 失败也要回包：客户端 diagRes==null 只会一直显示"等待查询"，永远不知道出错了
+            ctx.reply(new NetHandler.DiagRes(req.x(), req.z(), false,
+                    net.minecraft.network.chat.Component.translatable("sablefix.diag.error").getString(),
+                    0, 0, player.serverLevel().dimension().location().toString()));
         }
     }
 

@@ -58,7 +58,10 @@ public final class SfxCommands {
                         .then(Commands.literal("apply").executes(c -> repairAll(c.getSource(), true))))
                 .then(Commands.literal("tickets-purge")
                         .then(Commands.literal("dry").executes(c -> ticketsPurge(c.getSource(), false)))
-                        .then(Commands.literal("apply").executes(c -> ticketsPurge(c.getSource(), true)))));
+                        .then(Commands.literal("apply").executes(c -> ticketsPurge(c.getSource(), true))))
+                .then(Commands.literal("diag")
+                        .then(Commands.argument("pos", net.minecraft.commands.arguments.coordinates.BlockPosArgument.blockPos())
+                                .executes(c -> diag(c.getSource(), net.minecraft.commands.arguments.coordinates.BlockPosArgument.getLoadedBlockPos(c, "pos"))))));
     }
 
     /**
@@ -271,6 +274,37 @@ public final class SfxCommands {
             t.uuids().forEach(u -> src.sendSuccess(() -> Component.literal("  " + u), false));
         } catch (Exception e) {
             src.sendFailure(tr("sablefix.cmd.tickets_fail", e.getMessage()));
+        }
+        return 0;
+    }
+
+    /** /sablefix diag <pos>：区块加载状态/实体数/方块实体数（与 GUI 诊断页同源逻辑，只读）。 */
+    private static int diag(CommandSourceStack src, net.minecraft.core.BlockPos pos) {
+        try {
+            net.minecraft.server.level.ServerLevel level = src.getLevel();
+            int cx = pos.getX() >> 4, cz = pos.getZ() >> 4;
+            net.minecraft.world.level.chunk.LevelChunk chunk = level.getChunkSource().getChunkNow(cx, cz);
+            boolean loaded = chunk != null;
+            int entities = 0, blockEntities = 0;
+            if (loaded) {
+                net.minecraft.world.phys.AABB box = new net.minecraft.world.phys.AABB(
+                        cx * 16.0, level.getMinBuildHeight(), cz * 16.0,
+                        cx * 16.0 + 16, level.getMaxBuildHeight(), cz * 16.0 + 16);
+                entities = level.getEntities(net.minecraft.world.level.entity.EntityTypeTest.forClass(net.minecraft.world.entity.Entity.class), box, e -> true).size();
+                blockEntities = chunk.getBlockEntities().size();
+            }
+            String status = loaded ? tr("sablefix.diag.loaded").getString() : tr("sablefix.diag.not_loaded").getString();
+            final int fe = entities, fbe = blockEntities;
+            final String fDim = level.dimension().location().toString();
+            final int fCx = cx, fCz = cz;
+            src.sendSuccess(() -> tr("sablefix.cmd.diag_header", "(" + fCx * 16 + ", " + fCz * 16 + ")", status), false);
+            src.sendSuccess(() -> tr("sablefix.cmd.diag_dim", fDim), false);
+            src.sendSuccess(() -> tr("sablefix.cmd.diag_entities", fe), false);
+            src.sendSuccess(() -> tr("sablefix.cmd.diag_be", fbe), false);
+            return 1;
+        } catch (Exception e) {
+            src.sendFailure(tr("sablefix.cmd.list_fail", e.getMessage()));
+            SableFixMod.LOGGER.error("diag 命令失败", e);
         }
         return 0;
     }

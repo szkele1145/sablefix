@@ -154,5 +154,10 @@
   "sablefix.panel.purge_done_gui": "✓ 票据已清空：%s 条（重启服务器后生效，备份见聊天栏）",
   "sablefix.panel.purge_plan": "dry 预览：将清空 %s 条票据（其他字段原样保留）",
   "sablefix.cmd.repair_all_progress": "§7[%s/%s]§f %s — ✓ 清零 %s 个死槽",
-  "sablefix.cmd.repair_all_progress_fail": "§7[%s/%s]§f %s — ✗ 失败（详见日志）"
+  "sablefix.cmd.repair_all_progress_fail": "§7[%s/%s]§f %s — ✗ 失败（详见日志）",
+  "sablefix.diag.error": "诊断查询出错（详见服务器日志）",
+  "sablefix.cmd.diag_header": "区块诊断 [%s, %s]：%s",
+  "sablefix.cmd.diag_dim": "  维度: %s",
+  "sablefix.cmd.diag_entities": "  实体: %s",
+  "sablefix.cmd.diag_be": "  方块实体: %s"
 }
