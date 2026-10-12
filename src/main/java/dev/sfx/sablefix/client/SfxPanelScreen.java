@@ -158,6 +158,20 @@ public class SfxPanelScreen extends Screen {
         PacketDistributor.sendToServer(new NetHandler.PanelReq());
     }
 
+    /** 每 30 秒自动刷新（600 tick）：面板开着时数据保持新鲜，死锁监视页尤其受益。
+     *  demo 模式跳过（轮播有自己的节奏）；后台扫描中也不发（等 scanning 完成的重试链）。 */
+    @Override
+    public void tick() {
+        super.tick();
+        if (ClientSetup.isDemo() || data == null || data.scanning()) return;
+        if (++autoRefreshTicks >= 600) {
+            autoRefreshTicks = 0;
+            PacketDistributor.sendToServer(new NetHandler.PanelReq());
+        }
+    }
+
+    private int autoRefreshTicks;
+
     private void doDiag() {
         try {
             int x = Integer.parseInt(xBox.getValue().trim());
