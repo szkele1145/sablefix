@@ -5,6 +5,7 @@ import dev.sfx.sablefix.net.NetHandler;
 import dev.sfx.sablefix.scan.DamageRegistry;
 import dev.sfx.sablefix.scan.SubLevelScan;
 import dev.sfx.sablefix.scan.TicketScan;
+import dev.sfx.sablefix.watchdog.SaveObserver;
 import dev.sfx.sablefix.watchdog.ThreadWatchdog;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.IEventBus;
@@ -42,6 +43,7 @@ public class SableFixMod {
 
     private void onServerStarted(ServerStartedEvent event) {
         ThreadWatchdog.start();
+        SaveObserver.start(event.getServer());
         // 损伤登记簿：锚定/载入持久化清单（重启不丢），体检结果随后登记
         DamageRegistry.init(dev.sfx.sablefix.net.ServerHandlers.worldDir(event.getServer()).resolve("data"));
         // 启动体检只读不改，问题文件写日志；修复要玩家显式执行
@@ -51,6 +53,7 @@ public class SableFixMod {
 
     private void onServerStopping(ServerStoppingEvent event) {
         ThreadWatchdog.stop();
+        SaveObserver.stop();
     }
 
     private void onTick(ServerTickEvent.Post event) {
