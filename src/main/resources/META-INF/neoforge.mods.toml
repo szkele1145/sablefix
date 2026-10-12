@@ -7,10 +7,10 @@ modId = "sablefix"
 version = "1.2.0"
 displayName = "Sable Fix Core"
 description = """
-Sable 存档自愈与诊断核心。
-E: 主线程卡死监视（比原版看门狗早 40 秒抓现场）
-A: 启动时体检 .slvlr/.slvls 指针
-B: /sablefix check 全量体检
-C: 子层级文件浏览
-D: /sablefix diag 区块诊断
+Sable 存档自愈与诊断核心（诊断优先，修复为辅）。
+卡死 20 秒自动抓全线程栈（原版 60 秒杀服前抢下现场）；
+启动时体检 .slvlr/.slvls 指针与 force-load 票据；
+支持子层级修复 / 批量修复 / 票据清理（自动备份，只读体检）；
+/sablefix check|list|tickets|dump|repair|repair-all|tickets-purge|diag
+/sfxpanel 打开中英双语图形面板。
 """

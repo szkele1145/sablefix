@@ -32,6 +32,7 @@ Sable 存档自愈与诊断核心（Minecraft 1.21.1 / NeoForge 21.1.x，单 jar
   - `/sablefix check` 全量体检 · `/sablefix list` 问题文件 · `/sablefix tickets` 票据明细 · `/sablefix dump` 立刻抓全线程栈
   - `/sablefix repair <file> dry|apply` 修复单个子层级文件 · `repair-all dry|apply` 批量修复
   - `/sablefix tickets-purge dry|apply` 清空 force-load 票据
+  - `/sablefix diag <x y z>` 区块诊断（加载状态/实体数/方块实体数）
 - **客户端**：游戏内输入 `/sfxpanel` 打开图形面板（需服务端也装本 mod）
   - 存档体检页每个问题文件旁有「修复」按钮（dry 预览 → 确认清零）
   - 死锁监视页有「清理票据」按钮
