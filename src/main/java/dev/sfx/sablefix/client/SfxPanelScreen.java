@@ -335,7 +335,8 @@ public class SfxPanelScreen extends Screen {
             var img = net.minecraft.client.Screenshot.takeScreenshot(Minecraft.getInstance().getMainRenderTarget());
             java.nio.file.Files.createDirectories(java.nio.file.Path.of("screenshots"));
             String scaleTag = System.getProperty("sfx.scale");
-            String fname = "sfx-tab" + tab + (scaleTag != null ? "-s" + scaleTag : "") + ".png";
+            String stamp = java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HHmmss"));
+            String fname = "sfx-tab" + tab + (scaleTag != null ? "-s" + scaleTag : "") + "-" + stamp + ".png";
             img.writeToFile(java.nio.file.Path.of("screenshots", fname));
             img.close();
         } catch (Throwable t) {
