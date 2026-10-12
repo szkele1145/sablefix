@@ -70,7 +70,7 @@ public class SfxPanelScreen extends Screen {
                 new NetHandler.PanelData.DimRow("minecraft:the_nether", 147, 1, 2523),
                 new NetHandler.PanelData.DimRow("minecraft:the_end", 147, 0, 2523));
         var logs = java.util.List.of(
-                "16:33:42.101 [INFO] Sable Fix Core v1.0.0 loaded",
+                "16:33:42.101 [INFO] Sable Fix Core v" + SableFixMod.VERSION + " loaded",
                 "16:34:22.015 [INFO] watchdog up: auto-dump after 20s stall",
                 "16:34:23.602 [WARN] r.-4.7.slvlr: 3 dead pointers (74 live)",
                 "16:34:23.711 [INFO] tickets: 19 force-load tickets, gzip/NBT OK (707 B)",
