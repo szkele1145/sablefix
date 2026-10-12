@@ -69,8 +69,12 @@ public final class SfxCommands {
      * apply = 逐文件备份 + 清零。单个文件失败（被占用/IO 错）不中断整体，最后汇总成功/失败数。
      */
     private static int repairAll(CommandSourceStack src, boolean doApply) {
+        MinecraftServer server = src.getServer();
+        // scan+plan 段异步（600 文件 ~3.5s 不卡主线程；apply 是用户显式操作、毫秒级/文件留主线程）。
+        // 注：server.execute 仅作调度跳板（命令已在主线程），真正目的是进 runAsync 的扫描池。
+        dev.sfx.sablefix.net.ServerHandlers.runAsync(() -> {
         try {
-            Path dir = src.getServer().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
+            Path dir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
             SubLevelScan.Report r = SubLevelScan.scan(dir);
             List<SubLevelRepair.RepairPlan> plans = new ArrayList<>();
             for (SubLevelScan.SlvlIssue i : r.slvlr()) {
@@ -81,19 +85,21 @@ public final class SfxCommands {
             }
             plans.removeIf(SubLevelRepair.RepairPlan::isEmpty);
             if (plans.isEmpty()) {
-                src.sendSuccess(() -> tr("sablefix.cmd.repair_all_nothing"), false);
-                return 0;
+                server.execute(() -> src.sendSuccess(() -> tr("sablefix.cmd.repair_all_nothing"), false));
+                return;
             }
             long totalSlots = plans.stream().mapToLong(p -> p.slots().size()).sum();
-            src.sendSuccess(() -> tr("sablefix.cmd.repair_all_plan", plans.size(), totalSlots), false);
-            for (SubLevelRepair.RepairPlan p : plans) {
-                src.sendSuccess(() -> Component.literal("  " + p.file().getFileName()
-                        + " → " + p.slots().size() + " " + tr("sablefix.cmd.repair_slots_word").getString()), false);
-            }
-            if (!doApply) {
-                src.sendSuccess(() -> tr("sablefix.cmd.repair_all_dry_hint"), false);
-                return 1;
-            }
+            server.execute(() -> {
+                src.sendSuccess(() -> tr("sablefix.cmd.repair_all_plan", plans.size(), totalSlots), false);
+                for (SubLevelRepair.RepairPlan p : plans) {
+                    src.sendSuccess(() -> Component.literal("  " + p.file().getFileName()
+                            + " → " + p.slots().size() + " " + tr("sablefix.cmd.repair_slots_word").getString()), false);
+                }
+                if (!doApply) {
+                    src.sendSuccess(() -> tr("sablefix.cmd.repair_all_dry_hint"), false);
+                }
+            });
+            if (!doApply) return;
             int okFiles = 0, failFiles = 0, cleared = 0;
             Path lastBackup = null;
             final int planTotal = plans.size();
@@ -108,39 +114,38 @@ public final class SfxCommands {
                     cleared += res.cleared();
                     lastBackup = res.backup();
                     // 逐文件进度：批量时玩家能看到在动，不像卡死
-                    src.sendSuccess(() -> tr("sablefix.cmd.repair_all_progress", no, planTotal, fname, res.cleared()), false);
+                    server.execute(() -> src.sendSuccess(() -> tr("sablefix.cmd.repair_all_progress", no, planTotal, fname, res.cleared()), false));
                 } catch (Exception e) {
                     failFiles++;
                     SableFixMod.LOGGER.warn("repair-all: {} failed: {}", fname, e.getMessage());
-                    src.sendFailure(tr("sablefix.cmd.repair_all_progress_fail", no, planTotal, fname));
+                    server.execute(() -> src.sendFailure(tr("sablefix.cmd.repair_all_progress_fail", no, planTotal, fname)));
                 }
             }
             final int fOk = okFiles, fFail = failFiles, fCleared = cleared;
             final Path fBackup = lastBackup;
-            src.sendSuccess(() -> tr("sablefix.cmd.repair_all_done", fOk, fFail, fCleared), false);
-            if (fBackup != null) src.sendSuccess(() -> tr("sablefix.cmd.repair_backup_in", fBackup.getParent().toString()), false);
-            src.sendSuccess(() -> tr("sablefix.cmd.repair_restart_hint"), false);
+            server.execute(() -> {
+                src.sendSuccess(() -> tr("sablefix.cmd.repair_all_done", fOk, fFail, fCleared), false);
+                if (fBackup != null) src.sendSuccess(() -> tr("sablefix.cmd.repair_backup_in", fBackup.getParent().toString()), false);
+                src.sendSuccess(() -> tr("sablefix.cmd.repair_restart_hint"), false);
+            });
             SableFixMod.LOGGER.warn("repair-all: {} ok, {} failed, {} slots cleared", okFiles, failFiles, cleared);
-            return 1;
         } catch (Exception e) {
-            src.sendFailure(tr("sablefix.cmd.repair_fail", "all", e.getMessage()));
+            server.execute(() -> src.sendFailure(tr("sablefix.cmd.repair_fail", "all", e.getMessage())));
             SableFixMod.LOGGER.error("repair-all failed", e);
         }
-        return 0;
+        });
+        return 1;
     }
 
-    /** 补全：只建议有问题的文件名（裸名，不含路径）。 */
+    /** 补全：只建议有问题的文件名（裸名，不含路径）。
+     *  审计：原实现每次按键同步跑全量 scan（大存档 3.5s/键——打字必卡）。
+     *  改为只读 SCAN_CACHE（面板维护的缓存，含问题文件清单），未预热时返回空建议（面板一开即预热）。 */
     private static CompletableFuture<Suggestions> suggestProblemFiles(CommandSourceStack src, SuggestionsBuilder b) {
         try {
-            Path dir = src.getServer().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
-            SubLevelScan.Report r = SubLevelScan.scan(dir);
             String prefix = b.getRemainingLowerCase();
-            for (SubLevelScan.SlvlIssue i : r.slvlr())
-                if (i.file().getFileName().toString().toLowerCase().startsWith(prefix))
-                    b.suggest(i.file().getFileName().toString());
-            for (SubLevelScan.SlvlsIssue i : r.slvls())
-                if (i.file().getFileName().toString().toLowerCase().startsWith(prefix))
-                    b.suggest(i.file().getFileName().toString());
+            for (String name : dev.sfx.sablefix.net.ServerHandlers.cachedProblemFileNames()) {
+                if (name.toLowerCase().startsWith(prefix)) b.suggest(name);
+            }
         } catch (Exception ignored) {}
         return b.buildFuture();
     }

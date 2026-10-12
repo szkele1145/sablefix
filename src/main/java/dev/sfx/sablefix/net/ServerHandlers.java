@@ -57,6 +57,17 @@ public final class ServerHandlers {
         });
     }
 
+    /** 命令 tab 补全用：从面板缓存读问题文件名（无缓存/扫描中返回空——面板一开即预热）。
+     *  原实现每次按键同步全量 scan（大存档 3.5s/键）。 */
+    public static java.util.List<String> cachedProblemFileNames() {
+        CachedScan c = SCAN_CACHE.get();
+        if (c == null || c == COLD_SCAN || c == SCAN_FAILED) return List.of();
+        var names = new ArrayList<String>(c.report().slvlr().size() + c.report().slvls().size());
+        for (SubLevelScan.SlvlIssue i : c.report().slvlr()) names.add(i.file().getFileName().toString());
+        for (SubLevelScan.SlvlsIssue i : c.report().slvls()) names.add(i.file().getFileName().toString());
+        return names;
+    }
+
     /** 启动体检后台化（审计#1）：原在 ServerStarted 主线程同步跑，大存档阻塞开服 ~3.5s。
      *  与面板扫描共用 SCAN_POOL 天然互斥；体检结果进 DamageRegistry/ModLog（均 synchronized）。 */
     public static void runStartupScanAsync(MinecraftServer server) {
@@ -296,7 +307,9 @@ public final class ServerHandlers {
     public static void onDiagReq(NetHandler.DiagReq req, IPayloadContext ctx) {
         if (!(ctx.player() instanceof ServerPlayer player)) return;
         if (!player.hasPermissions(2)) {
-            player.displayClientMessage(Component.translatable("sablefix.perm.denied"), false);
+            // 与 repair/purge 统一：走 errorKey 回包，客户端本地化（服务器 locale 不串台）
+            ctx.reply(new NetHandler.DiagRes(req.x(), req.z(), false, "sablefix.perm.denied",
+                    0, 0, player.serverLevel().dimension().location().toString()));
             return;
         }
         try {

@@ -67,8 +67,14 @@ public final class TicketPurge {
         CompoundTag data = root.getCompound("data");
         data.put("tickets", new ListTag());          // 清空列表，保留 data 下其他字段
         Path tmp = p.resolveSibling(p.getFileName() + ".purge.tmp");
-        NbtIo.writeCompressed(root, tmp);
-        Files.move(tmp, p, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        Files.deleteIfExists(tmp);                   // 上次崩溃残留清理（审计：孤儿 tmp 永无人删）
+        try {
+            NbtIo.writeCompressed(root, tmp);
+            Files.move(tmp, p, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+        } catch (IOException e) {
+            Files.deleteIfExists(tmp);               // 失败兜底：不留半成品 tmp 污染诊断
+            throw e;
+        }
 
         SableFixMod.LOGGER.warn("票据清理：{} 原 {} 条已清零（备份 {}）", p.getFileName(), parsed.ticketCount(), backup);
         // 闭环：票据清零即移除登记
