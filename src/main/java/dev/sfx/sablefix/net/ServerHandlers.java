@@ -126,7 +126,7 @@ public final class ServerHandlers {
             ctx.reply(data);
         } catch (Exception e) {
             SableFixMod.LOGGER.error("面板数据生成失败", e);
-            ctx.player().displayClientMessage(Component.literal("[SableFix] 面板数据生成失败: " + e.getMessage()), false);
+            ctx.player().displayClientMessage(Component.translatable("sablefix.panel.fail", e.getMessage()), false);
         }
     }
 
@@ -243,7 +243,7 @@ public final class ServerHandlers {
             LevelChunk chunk = level.getChunkSource().getChunkNow(cx, cz);
             boolean loaded = chunk != null;
             int entities = 0, blockEntities = 0;
-            String status = loaded ? "FULL 已加载" : "未加载";
+            String status = net.minecraft.network.chat.Component.translatable(loaded ? "sablefix.diag.loaded" : "sablefix.diag.not_loaded").getString();
             if (loaded) {
                 AABB box = new AABB(cx * 16.0, level.getMinBuildHeight(), cz * 16.0,
                         cx * 16.0 + 16, level.getMaxBuildHeight(), cz * 16.0 + 16);
