@@ -97,7 +97,10 @@ public final class TicketScan {
 
     /** 跳过/解析一个 payload。end = payload 结束位置（exclusive）。root 层不消费 tag 头。 */
     private static void readPayload(byte[] b, Pos p, int end, Counter counter, List<UUID> uuids, int depth, boolean root) {
-        if (depth > 12) return;
+        // 模糊审计洞1：原 depth>12 静默 return 不消耗任何字节——外层 for(n=0x7FFFFFFF) 循环
+        // 变成 21 亿次空调用（等价死循环，数十字节 gzip 即可让启动体检挂死）。
+        // 改抛异常：外层 catch(RuntimeException) 按损坏处理。
+        if (depth > 12) throw new IllegalStateException("NBT depth > 12");
         while (p.v < end) {
             int tag = b[p.v] & 0xFF;
             p.v++;
@@ -128,7 +131,7 @@ public final class TicketScan {
                         }
                     } else {
                         int size = payloadSize(elemTag);
-                        p.v += (long) size * n;
+                        advanceChecked(p, (long) size * n, b.length);
                     }
                 }
                 case 11 -> {
@@ -143,15 +146,24 @@ public final class TicketScan {
                         }
                         p.v += 16;
                     } else {
-                        p.v += (long) n * 4;
+                        advanceChecked(p, (long) n * 4, b.length);
                     }
                 }
-                case 12 -> { int n = readLen(b, p); p.v += (long) n * 8; }
+                case 12 -> { int n = readLen(b, p); advanceChecked(p, (long) n * 8, b.length); }
                 case 8  -> { int n = ((b[p.v] & 0xFF) << 8) | (b[p.v + 1] & 0xFF); p.v += 2 + n; }
-                case 7  -> { int n = readLen(b, p); p.v += n; }
+                case 7  -> { int n = readLen(b, p); advanceChecked(p, n, b.length); }
                 default -> p.v += payloadSize(tag);
             }
         }
+    }
+
+    /** 模糊审计洞2：复合赋值 += 隐式窄化回 int——n*4 溢出时 p.v 回绕到数组内错误位置，
+     *  任意 16 字节被收成 UUID → 误登记 → 诱导玩家 purge 掉正常票据。
+     *  改显式 long 累加 + 越界即断（按截断/损坏处理）。 */
+    private static void advanceChecked(Pos p, long delta, int len) {
+        long next = (long) p.v + delta;
+        if (next >= len) { p.v = len; return; }   // 越界钉到末尾：外层 while(p.v<end) 自然退出
+        p.v = (int) next;
     }
 
     private static int payloadSize(int tag) {

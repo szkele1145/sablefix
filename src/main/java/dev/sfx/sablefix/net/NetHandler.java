@@ -173,27 +173,33 @@ public final class NetHandler {
     }
 
     private static PanelData readPanel(FriendlyByteBuf f) {
-        int n = Math.min(f.readVarInt(), MAX_FILES);
+        // 模糊审计：readVarInt 可为负 → new ArrayList<>(负) 抛 IAE 踢客户端。四处 clamp 到 ≥0。
+        int n = clampCount(f.readVarInt(), MAX_FILES);
         List<PanelData.FileRow> files = new ArrayList<>(Math.min(n, 1024));
         for (int i = 0; i < n; i++) {
             files.add(new PanelData.FileRow(f.readUtf(), f.readBoolean(), f.readVarLong(), f.readVarInt(), f.readVarInt()));
         }
         int tc = f.readVarInt();
-        int un = Math.min(f.readVarInt(), MAX_UUIDS);
+        int un = clampCount(f.readVarInt(), MAX_UUIDS);
         List<String> uuids = new ArrayList<>(Math.min(un, 256));
         for (int i = 0; i < un; i++) uuids.add(f.readUtf());
         long gap = f.readVarLong();
         int dumps = f.readVarInt();
         long up = f.readVarLong();
-        int dn = Math.min(f.readVarInt(), MAX_DIMS);
+        int dn = clampCount(f.readVarInt(), MAX_DIMS);
         List<PanelData.DimRow> dims = new ArrayList<>(Math.min(dn, 16));
         for (int i = 0; i < dn; i++) {
             dims.add(new PanelData.DimRow(f.readUtf(), f.readVarInt(), f.readVarInt(), f.readVarInt()));
         }
-        int ln = Math.min(f.readVarInt(), MAX_LOGS);
+        int ln = clampCount(f.readVarInt(), MAX_LOGS);
         List<String> logs = new ArrayList<>(Math.min(ln, 200));
         for (int i = 0; i < ln; i++) logs.add(f.readUtf(512));
         boolean scanning = f.readBoolean();
         return new PanelData(files, tc, uuids, gap, dumps, up, dims, logs, scanning);
+    }
+
+    /** VarInt 长度防御：负值按 0 处理（恶意/损坏包不踢客户端） */
+    private static int clampCount(int raw, int cap) {
+        return Math.max(0, Math.min(raw, cap));
     }
 }

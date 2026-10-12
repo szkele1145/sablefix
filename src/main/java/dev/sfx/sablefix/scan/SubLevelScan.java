@@ -95,6 +95,11 @@ public final class SubLevelScan {
         if (size < 4096) {
             return new SlvlIssue(f, 1, 0, size);  // 连头部都不完整，视为损坏
         }
+        // 模糊审计：>2GB 极端文件 (int) 强转回绕 → 段读 offset 为负抛异常/健康指针误判 dead。
+        // 退化为逐指针 long 算术路径（慢但正确）；正常 16MB 文件不受影响。
+        if (size > Integer.MAX_VALUE - 8L) {
+            return checkSlvlrLegacy(f, size);
+        }
         ByteBuffer head = readHead(f);
         int dead = 0, live = 0;
         // 批读 v2：排序指针 → 8KB 窗口分段顺序读，一次 syscall 校验段内全部记录头。
@@ -164,6 +169,25 @@ public final class SubLevelScan {
             if (off == 0 || cnt == 0 || end > size) bad++;
         }
         return bad == 0 ? null : new SlvlsIssue(f, bad, size);
+    }
+
+    /** >2GB .slvlr 的退化路径：全 long 算术，无 int 强转（模糊审计：批读的 (int) 强转在
+     *  size > Integer.MAX_VALUE 时回绕为负 → 负 offset 抛异常/健康指针误判 dead）。 */
+    static SlvlIssue checkSlvlrLegacy(Path f, long size) throws IOException {
+        ByteBuffer head = readHead(f);
+        int dead = 0, live = 0;
+        try (FileChannel ch = FileChannel.open(f, StandardOpenOption.READ)) {
+            for (int i = 0; i < 1024; i++) {
+                long ptr = Integer.toUnsignedLong(head.getInt(i * 4));
+                if (ptr == 0) continue;
+                if (ptr < 4096 || ptr + 5 > size) { dead++; continue; }
+                ByteBuffer rec = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN);
+                if (ch.read(rec, ptr) != 4) { dead++; continue; }
+                long recLen = Integer.toUnsignedLong(rec.getInt(0));
+                if (recLen < 1 || ptr + 4 + recLen > size) dead++; else live++;
+            }
+        }
+        return dead == 0 ? null : new SlvlIssue(f, dead, live, size);
     }
 
     private static ByteBuffer readHead(Path f) throws IOException {
