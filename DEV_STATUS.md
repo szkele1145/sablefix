@@ -1,30 +1,32 @@
 # Sable Fix Core · 开发状态
 
-## 版本纪律（2026-10-11 定稿，用户明确要求）
+## 当前版本线
+- **Modrinth/GitHub 最新已发布**：1.2.0（Repair Suite）
+- **main 分支攒批中（1.3.0 候选）**：
 
-> 历史教训：7 小时发了 8 个版本（1.0→1.7），用户被更新轰炸。已全部清理回滚。
+| # | 内容 | 状态 |
+|---|---|---|
+| 1 | SaveObserver：保存 future 纯观察 watchdog（30s 轮询、玩家 chunk 必查、卡 20s 登记、零 mixin 注入） | ✅ 已实现+基线验证 |
+| 2 | DamageRegistry：持久损伤台账（JSON 落盘/重启载入/周期 WARN 5min/玩家进服差异化提示/repair-purge 闭环清除/去噪写盘） | ✅ 已实现+端到端验证 |
+| 3 | repair apply 并发写防护（写回前重扫校验，槽位漂移即中止） | ✅ |
+| 4 | 诊断失败回包（GUI 不再永久"等待查询"） | ✅ |
+| 5 | `/sablefix diag <pos>` 命令（文档承诺过但缺失） | ✅ |
+| 6 | 面板损伤摘要前置到运行日志页（零协议变更） | ✅ |
+| 7 | 双语硬编码清零（诊断状态/面板失败/健康汇总行） | ✅ |
+| 8 | DiagRes 客户端本地化（errorKey 透传，服务器 locale 不串台） | ✅ |
+| 9 | 兼容性地图 COMPATIBILITY.md（零 mixin 审计 + 1.3.0 风险预案 + 测试清单） | ✅ |
+| 10 | 发布工具链（version_upload.js multipart、write_release_120 双语 payload） | ✅ |
 
-- **Modrinth / GitHub 只保留**：`1.0.0`（hotfix 线）与 `1.1.0`（当前最新）
-- **今后发版节奏**：
-  - 常规小改动 → **不发版**，攒在 main 分支
-  - 攒够一批功能/修复 → 发 **`1.1.x`**（补丁线）
-  - 大更新（新特性成套、协议变更）→ 发 **`1.2.0`**
-  - 不要短时间连发；发版前自问"这个版本值得用户打断一次吗"
+## 版本纪律（持续有效）
+- 攒批发版；单个小修不发版
+- **1.3.0 发布条件**：SaveObserver 在真实 Sable+c2me 环境观察一周无异常 + 跳过机制设计评审通过
+- 发布动作：bump_version → build → Modrinth POST version（version_upload.js）→ GitHub release（ghrel.json + jar）
 
-## 当前代码状态（main 分支，未发版内容）
+## 1.3.0 发布前必做
+- [ ] SaveObserver 观察期数据（真实 Sable+c2me 服务器 ≥1 周）
+- [ ] 跳过机制设计评审（观察→跳过的动作边界）
+- [ ] COMPATIBILITY.md 测试清单跑完（4 项组合测试）
 
-已构建但**不发布**的内容（等攒批）：
-- 1.8.0 本地稿：`tickets-purge` 票据清理（dry/apply、官方 NbtIo 读写、备份+原子写回、双语 149 key）
-- demo 开关修复（`-Dsfx.demo` 或环境变量 `SFX_DEMO` 均可触发，实机截图冒烟测试的前置）
-- 面板后台扫描 `scanning` 标志 + 自动刷新（1.5.0 稿）
-- 票据页 UUID 聚合统计 + 监视页滚动（1.6.0 稿）
-- `repair-all` 批量修复（1.7.0 稿）
-
-> 下次发版：把上述内容整体打包成 **1.2.0**（功能成套：修复体系完整化 = 大更新），或者按用户指示发 1.1.x。
-
-## 待办
-- [x] **实机截图冒烟（R13-R16 完成）**：demo 三阶段自动化（TitleScreen→40tick→面板轮播→stop），`-Dsfx.scale=N` 可指定 GUI scale，7 页自动截图管线打通；发现并修复 auto-scale 3x 压垮布局的问题（demo 默认 1x，可 -Dsfx.scale=N 覆盖）
-- [x] **1920 全屏复测（R14）**：7 页全绿，坐标核对无重合
-- [x] **票据清理 GUI 按钮（R15-R16）**：scale=2 下 OCR 确认「清理票据」按钮渲染、位置无重合
-- [x] **低逻辑宽档位布局复查（R17 完成）**：scale=1/2/3 三档穷举截图核对全绿（逻辑宽 291–1144），截图归档 D:\sfx\shots\auto*
-- [ ] **攒批发版**：main 上已有完整 1.8.0 内容（tickets-purge 命令+GUI、repair-all、后台扫描、UUID 聚合、UI 布局修复、demo 自动化管线、双语 154 key）。等用户拍板发 **1.2.0**（不要碎更）
+## 攒批池（低优先）
+- [ ] 面板数据压缩（触发条件：真实用户触达 418KB 包体）
+- [ ] repair 进度持久化（重启后继续提示未修复项——DamageRegistry 已覆盖大半）
