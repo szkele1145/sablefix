@@ -141,9 +141,16 @@ public final class SfxCommands {
      *  审计：原实现每次按键同步跑全量 scan（大存档 3.5s/键——打字必卡）。
      *  改为只读 SCAN_CACHE（面板维护的缓存，含问题文件清单），未预热时返回空建议（面板一开即预热）。 */
     private static CompletableFuture<Suggestions> suggestProblemFiles(CommandSourceStack src, SuggestionsBuilder b) {
+        // 可用性审计#3：纯命令流管理员没开过面板 → SCAN_CACHE 为空 → tab 永远无建议。
+        // 缓存为空时异步触发一次扫描（runAsync 幂等），本次先返回已能给出的（可能空）建议，
+        // 下一次按键即命中缓存——不打断输入。
         try {
             String prefix = b.getRemainingLowerCase();
-            for (String name : dev.sfx.sablefix.net.ServerHandlers.cachedProblemFileNames()) {
+            var names = dev.sfx.sablefix.net.ServerHandlers.cachedProblemFileNames();
+            if (names.isEmpty()) {
+                dev.sfx.sablefix.net.ServerHandlers.warmScanCache(src.getServer());
+            }
+            for (String name : names) {
                 if (name.toLowerCase().startsWith(prefix)) b.suggest(name);
             }
         } catch (Exception ignored) {}
@@ -215,6 +222,7 @@ public final class SfxCommands {
         src.sendSuccess(() -> Component.literal("§7/sablefix repair <file> dry|apply §f— ").append(tr("sablefix.cmd.help_repair")), false);
         src.sendSuccess(() -> Component.literal("§7/sablefix repair-all dry|apply §f— ").append(tr("sablefix.cmd.help_repair_all")), false);
         src.sendSuccess(() -> Component.literal("§7/sablefix tickets-purge dry|apply §f— ").append(tr("sablefix.cmd.help_purge")), false);
+        src.sendSuccess(() -> Component.literal("§7/sablefix diag <x y z> §f— ").append(tr("sablefix.cmd.help_diag")), false);
         src.sendSuccess(() -> Component.literal("§7/sfxpanel §f— ").append(tr("sablefix.cmd.help_panel")), false);
         src.sendSuccess(() -> tr("sablefix.cmd.help_passive"), false);
         src.sendSuccess(() -> tr("sablefix.cmd.help_qq"), false);

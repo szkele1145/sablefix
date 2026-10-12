@@ -68,6 +68,22 @@ public final class ServerHandlers {
         return names;
     }
 
+    /** 补全缓存预热（可用性：纯命令流用户没开过面板时 tab 拿不到建议）。
+     *  幂等：已有缓存或已在扫描则跳过；异步不阻塞输入，下一次按键命中。 */
+    public static void warmScanCache(MinecraftServer server) {
+        if (SCAN_CACHE.get() != null || !SCAN_RUNNING.compareAndSet(0, 1)) return;
+        Path sublevels = worldDir(server).resolve("sublevels");
+        SCAN_POOL.execute(() -> {
+            try {
+                SCAN_CACHE.set(buildScan(sublevels, server));
+            } catch (Exception e) {
+                SableFixMod.LOGGER.warn("补全预热扫描失败", e);
+            } finally {
+                SCAN_RUNNING.set(0);
+            }
+        });
+    }
+
     /** 启动体检后台化（审计#1）：原在 ServerStarted 主线程同步跑，大存档阻塞开服 ~3.5s。
      *  与面板扫描共用 SCAN_POOL 天然互斥；体检结果进 DamageRegistry/ModLog（均 synchronized）。 */
     public static void runStartupScanAsync(MinecraftServer server) {
