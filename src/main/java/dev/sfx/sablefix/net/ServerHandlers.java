@@ -274,6 +274,11 @@ public final class ServerHandlers {
         } catch (java.nio.file.FileSystemException e) {
             ctx.reply(new NetHandler.RepairRes(false, true, req.file(), 0, "", "",
                     "sablefix.cmd.repair_locked", req.file()));
+        } catch (java.io.FileNotFoundException e) {
+            // Windows"可读共享"句柄：备份(copy)成功但 raf("rw") 抛 FileNotFoundException——
+            // 兼容性审计：原走通用 fail，玩家看到 repair_fail 而非明确的"停服后操作"提示
+            ctx.reply(new NetHandler.RepairRes(false, true, req.file(), 0, "", "",
+                    "sablefix.cmd.repair_locked", req.file()));
         } catch (Exception e) {
             SableFixMod.LOGGER.error("panel repair failed: {}", req.file(), e);
             ctx.reply(new NetHandler.RepairRes(false, req.apply(), req.file(), 0, "", "",
@@ -313,6 +318,9 @@ public final class ServerHandlers {
             ctx.reply(new NetHandler.PurgeRes(true, true, n, backup.toString(), ""));
             dev.sfx.sablefix.log.ModLog.warn("面板票据清理：原 " + n + " 条已清空（备份 " + backup + "）");
         } catch (java.nio.file.FileSystemException e) {
+            ctx.reply(new NetHandler.PurgeRes(false, true, 0, "", "sablefix.cmd.purge_locked"));
+        } catch (java.io.FileNotFoundException e) {
+            // 兼容性审计：Windows 可读共享句柄下的占用——locked 语义
             ctx.reply(new NetHandler.PurgeRes(false, true, 0, "", "sablefix.cmd.purge_locked"));
         } catch (Exception e) {
             SableFixMod.LOGGER.error("panel purge failed", e);

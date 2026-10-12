@@ -202,6 +202,10 @@ public final class SfxCommands {
         } catch (java.nio.file.FileSystemException e) {
             src.sendFailure(tr("sablefix.cmd.repair_locked", fileName));
             SableFixMod.LOGGER.warn("repair: file locked {}", fileName, e);
+        } catch (java.io.FileNotFoundException e) {
+            // 兼容性审计：Windows 可读共享句柄下 raf("rw") 抛 FNFE——同 locked 语义
+            src.sendFailure(tr("sablefix.cmd.repair_locked", fileName));
+            SableFixMod.LOGGER.warn("repair: file in use {}", fileName, e);
         } catch (Exception e) {
             src.sendFailure(tr("sablefix.cmd.repair_fail", fileName, e.getMessage()));
             SableFixMod.LOGGER.error("repair failed: {}", fileName, e);
@@ -368,6 +372,11 @@ public final class SfxCommands {
             return 1;
         } catch (java.nio.file.FileSystemException e) {
             src.sendFailure(tr("sablefix.cmd.purge_locked", tf.getFileName().toString()));
+            SableFixMod.LOGGER.warn("tickets-purge: file locked", e);
+        } catch (java.io.FileNotFoundException e) {
+            // 兼容性审计：同 repair——Windows 可读共享句柄下的占用语义
+            src.sendFailure(tr("sablefix.cmd.purge_locked", tf.getFileName().toString()));
+            SableFixMod.LOGGER.warn("tickets-purge: file in use", e);
             SableFixMod.LOGGER.warn("tickets-purge: file locked", e);
         } catch (Exception e) {
             src.sendFailure(tr("sablefix.cmd.purge_fail", e.getMessage()));
