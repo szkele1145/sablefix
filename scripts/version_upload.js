@@ -4,13 +4,13 @@ const fs = require('fs');
 
 const t = fs.readFileSync('D:/sfx/.mrtoken', 'utf8').trim();
 const boundary = '----sfxrel' + Date.now();
-const jar = fs.readFileSync('D:/sfx/proj/build/libs/sablefix-1.2.0.jar');
+const jar = fs.readFileSync('D:/sfx/proj/build/libs/sablefix-1.3.0.jar');
 const dataPart = fs.readFileSync('D:/sfx/proj/mrdata.json');
 
 const body = Buffer.concat([
   Buffer.from('--' + boundary + '\r\nContent-Disposition: form-data; name="data"\r\nContent-Type: application/json\r\n\r\n'),
   dataPart,
-  Buffer.from('\r\n--' + boundary + '\r\nContent-Disposition: form-data; name="file"; filename="sablefix-1.2.0.jar"\r\nContent-Type: application/java-archive\r\n\r\n'),
+  Buffer.from('\r\n--' + boundary + '\r\nContent-Disposition: form-data; name="file"; filename="sablefix-1.3.0.jar"\r\nContent-Type: application/java-archive\r\n\r\n'),
   jar,
   Buffer.from('\r\n--' + boundary + '--\r\n')
 ]);
