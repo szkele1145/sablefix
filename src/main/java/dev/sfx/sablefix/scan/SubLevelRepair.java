@@ -49,8 +49,10 @@ public final class SubLevelRepair {
     private static RepairPlan planSlvlr(Path f) throws IOException {
         long size = Files.size(f);
         if (size < 4096) {
-            // 头部都不完整：不可修复（数据区无法定位），计划为空并在命令层提示
-            return new RepairPlan(f, true, List.of(), size);
+            // 回归审计：check 记 1 死指针但 plan 返回空计划 → dry 显示"无需修复"→
+            // 登记永不 clear → WARN/进服提示永久循环。改为明确抛"不可修复"，
+            // dry 与 apply 一致走 repair_fail 提示路径（不再静默空计划）。
+            throw new IOException("header truncated (<4096B), file not repairable: " + f.getFileName());
         }
         ByteBuffer head = readHead(f);
         List<Integer> slots = new ArrayList<>();
@@ -70,7 +72,10 @@ public final class SubLevelRepair {
 
     private static RepairPlan planSlvls(Path f) throws IOException {
         long size = Files.size(f);
-        if (size < 4096) return new RepairPlan(f, false, List.of(), size);
+        if (size < 4096) {
+            // 回归审计：与 planSlvlr 同因——截断文件 check 记坏但 plan 静默空 → 提示死循环
+            throw new IOException("header truncated (<4096B), file not repairable: " + f.getFileName());
+        }
         ByteBuffer head = readHead(f);
         List<Integer> slots = new ArrayList<>();
         for (int i = 0; i < 1024; i++) {

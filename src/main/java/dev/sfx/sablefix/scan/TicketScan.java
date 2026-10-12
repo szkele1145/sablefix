@@ -126,7 +126,7 @@ public final class TicketScan {
                                 uuids.add(new UUID(readLong(b, p), readLong(b, p)));
                                 counter.count++;
                             } else {
-                                p.v += (long) len * 4;
+                                advanceChecked(p, (long) len * 4, b.length);   // 回归审计：上一轮漏改的裸 +=
                             }
                         }
                     } else {
