@@ -114,8 +114,13 @@ public final class SaveObserver {
     }
 
     private static void checkHolder(ServerLevel level, ChunkHolder holder, long now) {
+        // saveSync 字段可为 null（chunk 尚未经历首次保存）——无保存历史≠卡住，直接跳过
         var saveFuture = holder.getSaveSyncFuture();
-        boolean pending = !saveFuture.isDone();
+        if (saveFuture == null || saveFuture.isDone()) {
+            PENDING.remove(dimName(level) + "@" + holder.getPos().x + "," + holder.getPos().z);
+            return;
+        }
+        boolean pending = true;
         String key = dimName(level) + "@" + holder.getPos().x + "," + holder.getPos().z;
         if (pending) {
             PENDING.compute(key, (k, t) -> {
