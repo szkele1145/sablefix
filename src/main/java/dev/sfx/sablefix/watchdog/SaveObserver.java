@@ -94,6 +94,12 @@ public final class SaveObserver {
             return;
         }
         int checked = 0;
+        // 玩家所在 chunk 必查（最影响体验，不受 64 上限约束）
+        for (var p : level.players()) {
+            var cp = p.blockPosition();
+            ChunkHolder ph = chunkSource.chunkMap.getVisibleChunkIfPresent(new net.minecraft.world.level.ChunkPos(cp).toLong());
+            if (ph != null) { checkHolder(level, ph, now); }
+        }
         for (var entity : level.getAllEntities()) {
             // 从实体位置取 holder 视角太窄；改用 chunk source 的可见集合——
             // ServerLevel 没有公开枚举全部 holder 的 API，退而求其次：检查实体所在 chunk（覆盖活跃区）
