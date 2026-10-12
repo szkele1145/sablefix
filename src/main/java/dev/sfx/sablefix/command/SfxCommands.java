@@ -155,10 +155,12 @@ public final class SfxCommands {
             Path target = dir.resolve(fileName).normalize();
             if (!target.startsWith(dir) || !java.nio.file.Files.exists(target)) {
                 // 大小写容错：遍历目录找忽略大小写的同名文件（玩家手输大小写经常不准）
+                // 修正：DirectoryStream 用 iterator() 每次返回新迭代器——旧代码
+                // ds.iterator().hasNext() + ds.iterator().next() 拿的是两个不同迭代器，
+                // 且只 next 一次（每次循环重新判断 hasNext → 死循环风险/漏文件）。正确写法用增强 for。
                 Path found = null;
-                try {
-                    for (java.nio.file.DirectoryStream<Path> ds = java.nio.file.Files.newDirectoryStream(dir); ds.iterator().hasNext();) {
-                        Path cand = ds.iterator().next();
+                try (java.nio.file.DirectoryStream<Path> ds = java.nio.file.Files.newDirectoryStream(dir)) {
+                    for (Path cand : ds) {
                         if (cand.getFileName().toString().equalsIgnoreCase(fileName)) { found = cand; break; }
                     }
                 } catch (Exception ignored) {}
