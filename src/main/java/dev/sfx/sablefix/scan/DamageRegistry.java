@@ -99,10 +99,12 @@ public final class DamageRegistry {
         long now = System.currentTimeMillis();
         if (now - lastPeriodicWarnMs < dev.sfx.sablefix.watchdog.ThreadWatchdog.WARN_PERIOD_MS) return;
         lastPeriodicWarnMs = now;
-        for (Entry e : DAMAGE.values()) {
-            SableFixMod.LOGGER.warn("[SableFix][损伤未处置] {} {} ×{}（首次发现 {}）——用 /sablefix 修复或联系管理员",
-                    e.kind, e.file, e.count, new java.util.Date(e.firstSeenMs));
-        }
+        // 单行汇总（条目多时控制台不刷屏）；明细已由体检日志给过，这里只提醒"还有多少没修"
+        SableFixMod.LOGGER.warn("[SableFix][损伤未处置] 共 {} 项：{}——用 /sablefix repair / tickets-purge 处理",
+                DAMAGE.size(),
+                DAMAGE.values().stream().map(e -> e.file + "×" + e.count)
+                        .limit(5).collect(java.util.stream.Collectors.joining(", "))
+                        + (DAMAGE.size() > 5 ? " …" : ""));
     }
 
     /** 玩家进服：返回该玩家未提示过的条目快照（调用方渲染 MC 文案），并标记已提示。 */
