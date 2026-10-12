@@ -46,6 +46,17 @@ public final class ServerHandlers {
     private static final long SCAN_FAILURE_COOLDOWN_MS = 30_000L;
     private static volatile long lastScanFailureAt = Long.MIN_VALUE;
 
+    /** 通用异步任务入口：命令的磁盘扫描走 SCAN_POOL（同池与启动体检/面板扫描天然互斥串行）。 */
+    public static void runAsync(Runnable task) {
+        SCAN_POOL.execute(() -> {
+            try {
+                task.run();
+            } catch (Exception e) {
+                SableFixMod.LOGGER.warn("async task failed", e);
+            }
+        });
+    }
+
     /** 启动体检后台化（审计#1）：原在 ServerStarted 主线程同步跑，大存档阻塞开服 ~3.5s。
      *  与面板扫描共用 SCAN_POOL 天然互斥；体检结果进 DamageRegistry/ModLog（均 synchronized）。 */
     public static void runStartupScanAsync(MinecraftServer server) {

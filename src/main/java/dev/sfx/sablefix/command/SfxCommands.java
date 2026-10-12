@@ -218,50 +218,61 @@ public final class SfxCommands {
 
     private static int check(CommandSourceStack src) {
         MinecraftServer server = src.getServer();
-        try {
-            Path dir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
-            SubLevelScan.Report r = SubLevelScan.scan(dir);
-            long dead = r.slvlr().stream().mapToLong(SubLevelScan.SlvlIssue::deadPointers).sum();
-            long bad = r.slvls().stream().mapToLong(SubLevelScan.SlvlsIssue::badEntries).sum();
-            src.sendSuccess(() -> tr("sablefix.cmd.check_sub",
-                    r.scannedSlvlr(), dead, r.scannedSlvls(), bad), false);
-            if (!r.slvlr().isEmpty() || !r.slvls().isEmpty()) {
-                src.sendSuccess(() -> tr("sablefix.cmd.check_list_hint"), false);
+        // 大存档 scan ~3.5s（600 文件基准折算）不能阻塞主线程 tick——丢扫描池，
+        // 结果回主线程再发消息（sendSuccess 必须主线程）。命令本身立即返回。
+        server.execute(() -> dev.sfx.sablefix.net.ServerHandlers.runAsync(() -> {
+            try {
+                Path dir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
+                SubLevelScan.Report r = SubLevelScan.scan(dir);
+                long dead = r.slvlr().stream().mapToLong(SubLevelScan.SlvlIssue::deadPointers).sum();
+                long bad = r.slvls().stream().mapToLong(SubLevelScan.SlvlsIssue::badEntries).sum();
+                server.execute(() -> {
+                    src.sendSuccess(() -> tr("sablefix.cmd.check_sub",
+                            r.scannedSlvlr(), dead, r.scannedSlvls(), bad), false);
+                    if (!r.slvlr().isEmpty() || !r.slvls().isEmpty()) {
+                        src.sendSuccess(() -> tr("sablefix.cmd.check_list_hint"), false);
+                    }
+                });
+                Path tf = TicketScan.ticketFile(server);
+                if (!java.nio.file.Files.exists(tf)) {
+                    server.execute(() -> src.sendSuccess(() -> tr("sablefix.cmd.check_tickets_absent"), false));
+                } else {
+                    TicketScan.TicketInfo t = TicketScan.read(tf);
+                    server.execute(() -> src.sendSuccess(() -> tr("sablefix.cmd.check_tickets_ok", t.count()), false));
+                }
+            } catch (Exception e) {
+                server.execute(() -> src.sendFailure(tr("sablefix.cmd.check_fail", e.getMessage())));
+                SableFixMod.LOGGER.error("check 失败", e);
             }
-            Path tf = TicketScan.ticketFile(server);
-            if (!java.nio.file.Files.exists(tf)) {
-                src.sendSuccess(() -> tr("sablefix.cmd.check_tickets_absent"), false);
-            } else {
-                TicketScan.TicketInfo t = TicketScan.read(tf);
-                src.sendSuccess(() -> tr("sablefix.cmd.check_tickets_ok", t.count()), false);
-            }
-        } catch (Exception e) {
-            src.sendFailure(tr("sablefix.cmd.check_fail", e.getMessage()));
-            SableFixMod.LOGGER.error("check 失败", e);
-        }
-        return 0;
+        }));
+        return 1;   // 已受理（异步），反馈稍后到
     }
 
     private static int list(CommandSourceStack src) {
-        try {
-            Path dir = src.getServer().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
-            SubLevelScan.Report r = SubLevelScan.scan(dir);
-            if (r.slvlr().isEmpty() && r.slvls().isEmpty()) {
-                src.sendSuccess(() -> tr("sablefix.cmd.list_empty"), false);
-                return 0;
+        MinecraftServer server = src.getServer();
+        server.execute(() -> dev.sfx.sablefix.net.ServerHandlers.runAsync(() -> {
+            try {
+                Path dir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
+                SubLevelScan.Report r = SubLevelScan.scan(dir);
+                server.execute(() -> {
+                    if (r.slvlr().isEmpty() && r.slvls().isEmpty()) {
+                        src.sendSuccess(() -> tr("sablefix.cmd.list_empty"), false);
+                        return;
+                    }
+                    for (SubLevelScan.SlvlIssue i : r.slvlr()) {
+                        src.sendSuccess(() -> tr("sablefix.cmd.list_slvlr",
+                                i.file().getFileName(), i.deadPointers(), i.livePointers(), i.size()), false);
+                    }
+                    for (SubLevelScan.SlvlsIssue i : r.slvls()) {
+                        src.sendSuccess(() -> tr("sablefix.cmd.list_slvls",
+                                i.file().getFileName(), i.badEntries(), i.size()), false);
+                    }
+                });
+            } catch (Exception e) {
+                server.execute(() -> src.sendFailure(tr("sablefix.cmd.list_fail", e.getMessage())));
             }
-            for (SubLevelScan.SlvlIssue i : r.slvlr()) {
-                src.sendSuccess(() -> tr("sablefix.cmd.list_slvlr",
-                        i.file().getFileName(), i.deadPointers(), i.livePointers(), i.size()), false);
-            }
-            for (SubLevelScan.SlvlsIssue i : r.slvls()) {
-                src.sendSuccess(() -> tr("sablefix.cmd.list_slvls",
-                        i.file().getFileName(), i.badEntries(), i.size()), false);
-            }
-        } catch (Exception e) {
-            src.sendFailure(tr("sablefix.cmd.list_fail", e.getMessage()));
-        }
-        return 0;
+        }));
+        return 1;
     }
 
     private static int tickets(CommandSourceStack src) {
