@@ -63,9 +63,11 @@ public final class DamageRegistry {
             e.firstSeenMs = now;
             DAMAGE.put(id, e);
         }
+        // 内容无变化（已知条目、数量相同）不写盘：启动体检每次都跑，避免无意义磁盘写
+        boolean changed = isNew || e.count != count;
         e.count = count;
         e.lastSeenMs = now;
-        save();
+        if (changed) save();
         return isNew;
     }
 
