@@ -13,6 +13,8 @@ const body = [
   '- 🖥️ **GUI panel** — `/sfxpanel` (bilingual EN/中文): overview, save check, sublevel browser, chunk diag, watchdog, logs, about',
   '- 📦 75 KB, zero dependencies, same jar on client & server, NeoForge 1.21.1',
   '',
+  '**Installing with Sable?** On the download page click **"Download with dependencies"** and tick **Sable (Aeronautics)** in the optional-dependencies list — the save health-check & repair features activate when Sable is present. Without Sable, deadlock watch still works.',
+  '',
   '**Feedback:** QQ 1129543042 (中文) · Telegram @maodie_mods (international, link in the in-mod About tab)',
   '',
   '---',
@@ -26,6 +28,8 @@ const body = [
   '- 🛠️ **存档修复** — 真正动手修的部分：损坏的子层级指针（船和飞行器静默丢失）、卡死的 force-load 票据。`/sablefix repair <file> dry|apply`，自动备份，只清指针表',
   '- 🖥️ **图形面板** — `/sfxpanel`（中英双语）：总览 / 存档体检 / 子层级浏览器 / 区块诊断 / 死锁监视 / 运行日志 / 关于',
   '- 📦 75KB 单 jar，零依赖，双端同装，NeoForge 1.21.1',
+  '',
+  '**要和 Sable 一起用？** 在下载页点**「与依赖项一起下载」**，在可选依赖列表勾选 **Sable (Aeronautics)**——装了 Sable 后，存档体检/修复功能自动激活；不装 Sable 时死锁监视照常工作。',
   '',
   '**反馈：** QQ 群 1129543042 · Telegram @maodie_mods（链接见模组内「关于」页）',
 ].join('\n');
