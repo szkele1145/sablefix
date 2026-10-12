@@ -225,6 +225,10 @@ public final class ServerHandlers {
             }
             SubLevelRepair.RepairResult res = SubLevelRepair.apply(plan);
             SCAN_CACHE.set(null);   // 修复后缓存作废，下次面板请求重扫
+            // DamageRegistry 闭环：GUI 修复成功同步清登记（否则 5min WARN 继续报已修复项）
+            String rf = target.getFileName().toString();
+            if (res.cleared() > 0) dev.sfx.sablefix.scan.DamageRegistry.clear(
+                    dev.sfx.sablefix.scan.DamageRegistry.Kind.SUBLVL_DEAD, rf);
             ctx.reply(new NetHandler.RepairRes(true, true, req.file(), res.cleared(), "",
                     res.backup().toString(), "", ""));
             dev.sfx.sablefix.log.ModLog.warn("面板修复：" + req.file() + " 清零 " + res.cleared()
@@ -264,6 +268,10 @@ public final class ServerHandlers {
             }
             Path backup = TicketPurge.purge(tf);
             SCAN_CACHE.set(null);   // 票据数据已变，作废面板缓存
+            // DamageRegistry 闭环：GUI 清理成功同步清登记
+            dev.sfx.sablefix.scan.DamageRegistry.clear(
+                    dev.sfx.sablefix.scan.DamageRegistry.Kind.TICKETS_STUCK,
+                    tf.getFileName().toString());
             ctx.reply(new NetHandler.PurgeRes(true, true, n, backup.toString(), ""));
             dev.sfx.sablefix.log.ModLog.warn("面板票据清理：原 " + n + " 条已清空（备份 " + backup + "）");
         } catch (java.nio.file.FileSystemException e) {
