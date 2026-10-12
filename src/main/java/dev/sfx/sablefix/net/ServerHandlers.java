@@ -134,6 +134,15 @@ public final class ServerHandlers {
 
             var logSnap = dev.sfx.sablefix.log.ModLog.snapshot();
             var logLines = new java.util.ArrayList<String>(logSnap.size());
+            // 损伤登记簿摘要前置：OP 开面板即见当前损伤状态（不用翻控制台）
+            var dmg = dev.sfx.sablefix.scan.DamageRegistry.snapshot();
+            if (!dmg.isEmpty()) {
+                logLines.add(java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss.SSS"))
+                        + " [WARN] 未处置损伤 " + dmg.size() + " 项："
+                        + dmg.stream().map(e -> e.file + "×" + e.count).limit(3)
+                                .collect(java.util.stream.Collectors.joining(", "))
+                        + (dmg.size() > 3 ? " …" : ""));
+            }
             for (var e : logSnap) logLines.add(e.time() + " [" + e.level() + "] " + e.msg());
 
             NetHandler.PanelData data = new NetHandler.PanelData(
