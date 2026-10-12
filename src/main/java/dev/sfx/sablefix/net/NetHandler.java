@@ -16,8 +16,9 @@ public final class NetHandler {
     /** 协议版本：**任何**增删/改通道负载格式时必须 +1。两端版本号不一致会在握手期被
      *  NeoForge 拒绝并给出清晰提示，而不是运行期才"网络通道抽风"。
      *  v1: 1.0.0–1.3.0（panel/diag + repair + purge，期间变更未 bump 是历史教训）
-     *  v2: 1.3.1 起（DiagRes.errorKey 客户端本地化 + 发送侧截断语义确立） */
-    public static final String PROTOCOL_VERSION = "2";
+     *  v2: 1.3.1（DiagRes.errorKey 客户端本地化 + 发送侧截断语义确立）
+     *  v3: 1.4.0（负 VarInt clamp、日志截断方向修正——接收语义变化） */
+    public static final String PROTOCOL_VERSION = "3";
 
     public static void register(net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent event) {
         PayloadRegistrar reg = event.registrar(PROTOCOL_VERSION);
