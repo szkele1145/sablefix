@@ -44,11 +44,12 @@ public class SableFixMod {
     private void onServerStarted(ServerStartedEvent event) {
         ThreadWatchdog.start();
         SaveObserver.start(event.getServer());
-        // 损伤登记簿：锚定/载入持久化清单（重启不丢），体检结果随后登记
+        // 损伤登记簿：锚定/载入持久化清单（重启不丢），体检结果随后登记。
+        // init 必须同步先行（登记簿路径锚定+载入），后续 register 才有落点
         DamageRegistry.init(dev.sfx.sablefix.net.ServerHandlers.worldDir(event.getServer()).resolve("data"));
-        // 启动体检只读不改，问题文件写日志；修复要玩家显式执行
-        SubLevelScan.startupScan(event.getServer());
-        TicketScan.startupScan(event.getServer());
+        // 启动体检后台化：600 文件大存档同步扫描阻塞开服 ~3.5s（v2 基准折算）。
+        // 与面板扫描共用 SCAN_POOL（天然互斥）；DamageRegistry/ModLog 均 synchronized，线程安全已核实
+        dev.sfx.sablefix.net.ServerHandlers.runStartupScanAsync(event.getServer());
     }
 
     private void onServerStopping(ServerStoppingEvent event) {

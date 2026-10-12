@@ -3,6 +3,7 @@ package dev.sfx.sablefix.scan;
 import dev.sfx.sablefix.SableFixMod;
 import net.minecraft.server.MinecraftServer;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.Files;
@@ -55,10 +56,25 @@ public final class TicketScan {
                 .resolve("data").resolve("sable_sub_level_force_load_tickets.dat");
     }
 
+    /** 解压后裸 NBT 大小上限：正常票据文件远小于此；超限按损坏处理（gzip 炸弹/异常膨胀防护）。 */
+    private static final int MAX_RAW_BYTES = 64 * 1024 * 1024;
+
     public static TicketInfo read(Path p) throws IOException {
         byte[] raw;
         try (InputStream in = new GZIPInputStream(Files.newInputStream(p))) {
-            raw = in.readAllBytes();
+            // 64KB 缓冲循环读 + 累计计数：解压超 64MB 直接判损坏，防 gzip 炸弹打爆内存
+            ByteArrayOutputStream buf = new ByteArrayOutputStream(64 * 1024);
+            byte[] chunk = new byte[64 * 1024];
+            long total = 0;
+            int r;
+            while ((r = in.read(chunk)) != -1) {
+                total += r;
+                if (total > MAX_RAW_BYTES) {
+                    throw new IOException("票据文件解压后超过 64MB（疑似 gzip 炸弹或损坏）");
+                }
+                buf.write(chunk, 0, r);
+            }
+            raw = buf.toByteArray();
         }
         // 最小 NBT 解析：只挑 tickets 列表里的 uuid（tag 0x0b, 长度 16）
         List<UUID> uuids = new ArrayList<>();
@@ -71,8 +87,8 @@ public final class TicketScan {
         Counter c = new Counter();
         try {
             readPayload(b, new Pos(), b.length, c, uuids, 0, true);
-        } catch (IndexOutOfBoundsException ignored) {
-            // 截断文件按已解析到的部分处理
+        } catch (RuntimeException ignored) {
+            // 截断/损坏（越界、负 NBT 长度等）按已解析到的部分处理
         }
         return c.count;
     }
@@ -92,7 +108,7 @@ public final class TicketScan {
                 case 10 -> readPayload(b, p, end, counter, uuids, depth + 1, false); // compound 自行消费到 End
                 case 9 -> {
                     int elemTag = b[p.v] & 0xFF; p.v++;
-                    int n = readInt(b, p);
+                    int n = readLen(b, p);
                     if (elemTag == 10) {
                         // 元素 compound 里有 End tag，递归吃掉即可
                         for (int i = 0; i < n; i++) {
@@ -101,7 +117,7 @@ public final class TicketScan {
                     } else if (elemTag == 11) {
                         // List<int[]>：每个元素是长度前缀 int 数组（老版解析器整表当原始字节跳过 → 漏计）
                         for (int i = 0; i < n && p.v + 4 <= b.length; i++) {
-                            int len = readInt(b, p);
+                            int len = readLen(b, p);
                             if (len == 4) { p.v += 16; }                       // DataVersion 之类
                             else if (len == 16 && p.v + 16 <= b.length) {      // uuid 形状
                                 uuids.add(new UUID(readLong(b, p), readLong(b, p)));
@@ -116,7 +132,7 @@ public final class TicketScan {
                     }
                 }
                 case 11 -> {
-                    int n = readInt(b, p);
+                    int n = readLen(b, p);
                     if (n == 4) {  // DataVersion 之类，跳过
                         p.v += 16;
                     } else if (n == 16) {
@@ -130,9 +146,9 @@ public final class TicketScan {
                         p.v += (long) n * 4;
                     }
                 }
-                case 12 -> { int n = readInt(b, p); p.v += (long) n * 8; }
+                case 12 -> { int n = readLen(b, p); p.v += (long) n * 8; }
                 case 8  -> { int n = ((b[p.v] & 0xFF) << 8) | (b[p.v + 1] & 0xFF); p.v += 2 + n; }
-                case 7  -> { int n = readInt(b, p); p.v += n; }
+                case 7  -> { int n = readLen(b, p); p.v += n; }
                 default -> p.v += payloadSize(tag);
             }
         }
@@ -148,6 +164,13 @@ public final class TicketScan {
     private static int readInt(byte[] b, Pos p) {
         int v = ((b[p.v] & 0xFF) << 24) | ((b[p.v + 1] & 0xFF) << 16) | ((b[p.v + 2] & 0xFF) << 8) | (b[p.v + 3] & 0xFF);
         p.v += 4;
+        return v;
+    }
+
+    /** 读 4 字节大端有符号 int 作 NBT 长度/数量字段：负值即损坏数据，立即抛出，防回绕死循环。 */
+    private static int readLen(byte[] b, Pos p) {
+        int v = readInt(b, p);
+        if (v < 0) throw new IllegalStateException("negative NBT length");
         return v;
     }
 

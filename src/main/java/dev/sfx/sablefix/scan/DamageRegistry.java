@@ -52,7 +52,10 @@ public final class DamageRegistry {
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static volatile Path storePath;   // ServerStarted 时锚定
 
-    /** 体检/票据扫描发现损伤时登记（任意线程）。返回 true=新增条目（新问题），false=已知。 */
+    /** 体检/票据扫描发现损伤时登记（任意线程）。返回 true=新增条目（新问题），false=已知。
+     *  审计#3：锁内只做数据变更+拷贝快照，save() 磁盘写移到锁外——原实现在 synchronized
+     *  临界区内做 GSON+ATOMIC_MOVE（1-50ms），与主线程每 tick 的 periodicWarn 争锁 →
+     *  偶发单 tick 阻塞（隐形掉 tps 源）。改后"最后写赢"，可接受。 */
     public static synchronized boolean register(Kind kind, String file, int count) {
         String id = kind.name() + ":" + file;
         long now = System.currentTimeMillis();
@@ -69,13 +72,13 @@ public final class DamageRegistry {
         boolean changed = isNew || e.count != count;
         e.count = count;
         e.lastSeenMs = now;
-        if (changed) save();
+        if (changed) saveLater(new LinkedHashMap<>(DAMAGE));
         return isNew;
     }
 
-    /** 问题消失（如玩家已用 repair 修复）时移除，下次 WARN 不再出现。 */
+    /** 问题消失（如玩家已用 repair 修复）时移除，下次 WARN 不再出现。写盘同样移到锁外（审计#3）。 */
     public static synchronized void clear(Kind kind, String file) {
-        if (DAMAGE.remove(kind.name() + ":" + file) != null) save();
+        if (DAMAGE.remove(kind.name() + ":" + file) != null) saveLater(new LinkedHashMap<>(DAMAGE));
     }
 
     /** 锚定存储路径 + 载入已有登记（重启后损伤清单不丢）。storeDir = <世界>/data（由调用方传入，Registry 不依赖 MC 类型）。 */
@@ -131,11 +134,13 @@ public final class DamageRegistry {
         return new java.util.ArrayList<>(DAMAGE.values());
     }
 
-    private static void save() {
+    /** 锁外异步写盘（审计#3）：快照在锁内拷贝好，写盘交给调用方线程继续持锁外执行。
+     *  写失败仅记日志（数据仍在内存，下次变更会再试）。 */
+    private static void saveLater(Map<String, Entry> snapshot) {
         if (storePath == null) return;
         try {
             Path tmp = storePath.resolveSibling(storePath.getFileName() + ".tmp");
-            Files.writeString(tmp, GSON.toJson(DAMAGE));
+            Files.writeString(tmp, GSON.toJson(snapshot));
             Files.move(tmp, storePath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
             SableFixMod.LOGGER.error("损伤登记簿写盘失败", e);

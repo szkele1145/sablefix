@@ -107,6 +107,7 @@ public final class ThreadWatchdog {
             }
             DUMPS.incrementAndGet();
             lastDumpNanos = System.nanoTime();   // 手动抓栈也进冷却，防自动线程紧接着重复抓
+            pruneOldDumps(dir);
             ModLogHolder.dumped(stallNanos, out);
             SableFixMod.LOGGER.warn("主线程已卡 {} 秒！线程栈已写入 {}", stallNanos / 1_000_000_000.0, out);
         } catch (IOException ex) {
@@ -120,6 +121,28 @@ public final class ThreadWatchdog {
             return Path.of(System.getProperty("user.dir"), "logs", "sablefix");
         } catch (Exception e) {
             return Path.of("logs", "sablefix");
+        }
+    }
+
+    /** 审计#6：dump 文件保留上限——反复卡死的服务器（本模组目标场景）月积数百 MB。
+     *  每次成功 dump 后按修改时间保留最近 50 份，删更老的；失败仅 debug 日志不影响抓栈。 */
+    private static final int MAX_DUMPS_KEPT = 50;
+
+    private static void pruneOldDumps(Path dir) {
+        try (var stream = Files.list(dir)) {
+            var files = stream.filter(p -> {
+                        String n = p.getFileName().toString();
+                        return n.startsWith("threaddump-") && n.endsWith(".txt");
+                    }).sorted(java.util.Comparator.comparingLong(p -> {
+                        try { return Files.getLastModifiedTime((Path) p).toMillis(); }
+                        catch (IOException e) { return 0L; }
+                    }).reversed())
+                    .toList();
+            for (int i = MAX_DUMPS_KEPT; i < files.size(); i++) {
+                try { Files.delete(files.get(i)); } catch (IOException ignored) {}
+            }
+        } catch (Exception e) {
+            SableFixMod.LOGGER.debug("旧 dump 清理失败（不影响抓栈）", e);
         }
     }
 

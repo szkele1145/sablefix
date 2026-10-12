@@ -25,7 +25,8 @@ public final class SaveObserver {
     private static final long POLL_MILLIS = 30_000L;
     private static final long PENDING_THRESHOLD_MS = 20_000L;
 
-    private record Track(long sinceNanos, boolean registered) {}
+    /** sinceNanos=首次观察到 pending 的时刻；lastSeenNanos=最近一轮仍 pending 的时刻（审计#5 泄漏修复） */
+    private record Track(long sinceNanos, boolean registered, long lastSeenNanos) {}
 
     /** 维度名@chunkX,chunkZ -> 追踪状态 */
     private static final Map<String, Track> PENDING = new ConcurrentHashMap<>();
@@ -72,15 +73,10 @@ public final class SaveObserver {
                     SableFixMod.LOGGER.debug("save observer scan error on {}", level.dimension().location(), e);
                 }
             }
-            // 已恢复的 pending 清除登记
-            PENDING.entrySet().removeIf(e -> {
-                if (now - e.getValue().sinceNanos() > PENDING_THRESHOLD_MS * 2
-                        && e.getValue().registered()) {
-                    // 恢复超过一个周期未再观察到 pending：从损伤登记簿移除由后续体检确认，这里只清追踪
-                    return true;
-                }
-                return false;
-            });
+            // 已恢复的 pending 清除追踪（审计#5：改按 lastSeen 超时清理——旧逻辑只清
+            // registered=true 条目，首次 pending 后恢复且不再被 checkHolder 覆盖的条目永久滞留）
+            PENDING.entrySet().removeIf(e ->
+                    now - e.getValue().lastSeenNanos() > POLL_MILLIS * 4);
         }
     }
 
@@ -116,27 +112,22 @@ public final class SaveObserver {
     private static void checkHolder(ServerLevel level, ChunkHolder holder, long now) {
         // saveSync 字段可为 null（chunk 尚未经历首次保存）——无保存历史≠卡住，直接跳过
         var saveFuture = holder.getSaveSyncFuture();
+        String key = dimName(level) + "@" + holder.getPos().x + "," + holder.getPos().z;
         if (saveFuture == null || saveFuture.isDone()) {
-            PENDING.remove(dimName(level) + "@" + holder.getPos().x + "," + holder.getPos().z);
+            PENDING.remove(key);
             return;
         }
-        boolean pending = true;
-        String key = dimName(level) + "@" + holder.getPos().x + "," + holder.getPos().z;
-        if (pending) {
-            PENDING.compute(key, (k, t) -> {
-                if (t == null) return new Track(now, false);
-                long stalledMs = (now - t.sinceNanos()) / 1_000_000L;
-                if (!t.registered() && stalledMs >= PENDING_THRESHOLD_MS) {
-                    DamageRegistry.register(DamageRegistry.Kind.SAVE_STALLED,
-                            k + " (save pending " + stalledMs + "ms)", 1);
-                    SableFixMod.LOGGER.warn("保存 future 卡住 {}：{}ms 未完成（已登记损伤）", k, stalledMs);
-                    return new Track(t.sinceNanos(), true);
-                }
-                return t;
-            });
-        } else {
-            PENDING.remove(key);
-        }
+        PENDING.compute(key, (k, t) -> {
+            if (t == null) return new Track(now, false, now);
+            long stalledMs = (now - t.sinceNanos()) / 1_000_000L;
+            if (!t.registered() && stalledMs >= PENDING_THRESHOLD_MS) {
+                DamageRegistry.register(DamageRegistry.Kind.SAVE_STALLED,
+                        k + " (save pending " + stalledMs + "ms)", 1);
+                SableFixMod.LOGGER.warn("保存 future 卡住 {}：{}ms 未完成（已登记损伤）", k, stalledMs);
+                return new Track(t.sinceNanos(), true, now);
+            }
+            return new Track(t.sinceNanos(), t.registered(), now);   // 审计#5：每轮刷新 lastSeen
+        });
     }
 
     private static String dimName(ServerLevel level) {

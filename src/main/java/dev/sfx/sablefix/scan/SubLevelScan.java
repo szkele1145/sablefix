@@ -122,7 +122,14 @@ public final class SubLevelScan {
                     int segEnd = Math.min(offs.get(j) + 4, (int) size);
                     int segLen = Math.max(4, segEnd - segStart);
                     ByteBuffer seg = ByteBuffer.allocate(segLen).order(ByteOrder.BIG_ENDIAN);
-                    int got = ch.read(seg, segStart);
+                    // 审计#4：positioned read 契约可短读——单次 read 会把段尾的健康指针误判
+                    // 成 dead（误报 → 玩家修复 → 好记录被清零）。与 readHead 同构的补读循环。
+                    int got = 0;
+                    while (seg.hasRemaining()) {
+                        int r = ch.read(seg, segStart + got);
+                        if (r < 0) break;
+                        got += r;
+                    }
                     if (got < 4) {
                         for (int k = i; k <= j; k++) dead++;
                     } else {

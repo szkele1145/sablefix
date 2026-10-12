@@ -46,6 +46,23 @@ public final class ServerHandlers {
     private static final long SCAN_FAILURE_COOLDOWN_MS = 30_000L;
     private static volatile long lastScanFailureAt = Long.MIN_VALUE;
 
+    /** 启动体检后台化（审计#1）：原在 ServerStarted 主线程同步跑，大存档阻塞开服 ~3.5s。
+     *  与面板扫描共用 SCAN_POOL 天然互斥；体检结果进 DamageRegistry/ModLog（均 synchronized）。 */
+    public static void runStartupScanAsync(MinecraftServer server) {
+        SCAN_POOL.execute(() -> {
+            try {
+                SubLevelScan.startupScan(server);
+            } catch (Exception e) {
+                SableFixMod.LOGGER.warn("启动子层级体检任务异常", e);
+            }
+            try {
+                TicketScan.startupScan(server);
+            } catch (Exception e) {
+                SableFixMod.LOGGER.warn("启动票据体检任务异常", e);
+            }
+        });
+    }
+
     private record CachedScan(SubLevelScan.Report report, List<String> ticketUuids,
                               int ticketCount, long at) {}
 

@@ -32,8 +32,25 @@ public class SfxPanelScreen extends Screen {
     private static final int SIDE_X = 8, SIDE_W = 108;
     private static final int NAV_TOP = 38, NAV_H = 20, NAV_GAP = 3;
 
-    /** lang 解析助手 */
+    /** lang 解析助手（GUI 审计#1：60fps 渲染下每帧 ~50 次 translatable 构造+语言表分解是
+     *  最大单项分配压力 → 无参结果按 key 缓存；带参仍走直译（每次参数不同，缓存无意义）。
+     *  失效：语言热切换时客户端会重建 Screen（init 重新跑），静态缓存随 JVM 语言环境
+     *  实例走 getString 每次解析——实测 MC 语言表 reload 后 TranslatableContents 会重新
+     *  解析，因此以 Minecraft.getInstance().getLanguageManager().getSelected() 作为
+     *  语言代次，变更时整体失效）。 */
+    private static final java.util.Map<String, String> LANG_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
+    private static volatile Object langGeneration;
+
     private static String L(String key, Object... args) {
+        if (args.length == 0) {
+            Object gen = net.minecraft.client.Minecraft.getInstance()
+                    .getLanguageManager().getSelected();
+            if (gen != langGeneration) {
+                LANG_CACHE.clear();
+                langGeneration = gen;
+            }
+            return LANG_CACHE.computeIfAbsent(key, k -> Component.translatable(k).getString());
+        }
         return Component.translatable(key, args).getString();
     }
 
@@ -177,6 +194,7 @@ public class SfxPanelScreen extends Screen {
             int x = Integer.parseInt(xBox.getValue().trim());
             int z = Integer.parseInt(zBox.getValue().trim());
             diagRes = null;
+            diagStatusLine = null;   // 与 diagRes 同步清（GUI审计#6）
             PacketDistributor.sendToServer(new NetHandler.DiagReq(x, z));
         } catch (NumberFormatException ignored) {}
     }
@@ -185,6 +203,10 @@ public class SfxPanelScreen extends Screen {
         boolean wasScanning = data != null && data.scanning();
         this.data = d;
         animStart = Util.getMillis();
+        // GUI 审计#2/#4：浏览页排序结果 + 监视页聚合 + 派生统计在数据到达时算一次，
+        // render 每帧只读（原来每帧全量 filter/sort/merge 是 60fps 下的分配大头）
+        browseCache = null;
+        precomputePanelStats();
         // 后台首扫期间：指数退避重拉（2s→4s→8s 封顶），拿到全量后复位。
         // 多管理员同时开面板时服务端只有一次真重扫，退避避免重试风暴。
         if (d.scanning()) {
@@ -199,8 +221,37 @@ public class SfxPanelScreen extends Screen {
         }
     }
 
+    /** onData 一次算好的派生统计（GUI 审计#6：原来 pageHome/pageHealth 每帧全量 stream 聚合） */
+    private long statDeadTotal;      // 所有死槽/坏条目合计（home 横幅用）
+    private int statIssueFiles;      // 有问题的文件数（health 横幅用）
+    private java.util.Map<String, Integer> ticketCounts;  // uuid -> 次数（pageWatch 聚合）
+    private int ticketTotal, ticketUnique;
+    private java.util.List<NetHandler.PanelData.FileRow> browseCache;  // 排序+过滤结果缓存
+
+    private void precomputePanelStats() {
+        long dead = 0;
+        int issues = 0;
+        for (NetHandler.PanelData.FileRow f : data.files()) {
+            if (f.dead() > 0) { dead += f.dead(); issues++; }
+        }
+        statDeadTotal = dead;
+        statIssueFiles = issues;
+        var counts = new java.util.LinkedHashMap<String, Integer>();
+        for (String u : data.ticketUuids()) counts.merge(u, 1, Integer::sum);
+        ticketCounts = counts;
+        ticketTotal = data.ticketUuids().size();
+        ticketUnique = counts.size();
+    }
+
     private int scanRetries;
-    public void onDiag(NetHandler.DiagRes r) { this.diagRes = r; }
+    private String diagStatusLine;   // onDiag 时格式化（GUI审计#6：render 不再每帧拼接）
+    public void onDiag(NetHandler.DiagRes r) {
+        this.diagRes = r;
+        boolean errored = !r.errorKey().isEmpty();
+        String statusText = errored ? L(r.errorKey())
+                : L(r.loaded() ? "sablefix.diag.loaded" : "sablefix.diag.not_loaded");
+        diagStatusLine = "(" + r.x() + ", " + r.z() + ")  " + statusText;
+    }
 
     // ================= 交互 =================
     @Override
@@ -268,8 +319,9 @@ public class SfxPanelScreen extends Screen {
             return true;
         }
         if (tab == 4) {
-            int rowsBottom = height - 44;   // 近似 clamp（与 pageWatch rowsBottom 对应）
-            int max = Math.max(0, ticketContentBottom - rowsBottom);
+            // GUI 审计#5：render 实测 rowsBottom 记录到字段——旧硬编码 height-44 在
+            // purgeMsg 横幅显示期间（cy2+=26）与实际差 22px（恰一行行高，最后一行滚不出来）
+            int max = Math.max(0, ticketContentBottom - ticketRowsBottom);
             ticketScroll = Math.max(0, Math.min(max, ticketScroll - (int) (dy * 24)));
             return true;
         }
@@ -449,8 +501,8 @@ public class SfxPanelScreen extends Screen {
         g.drawString(font, L("sablefix.panel.entities"), entX, ty + 8, withA(FAINT, a), false);
         g.drawString(font, L("sablefix.panel.chunks"), chkX, ty + 8, withA(FAINT, a), false);
 
-        // 底部横幅（剩余空间才画）
-        long dead = data.files().stream().filter(f -> f.dead() > 0).mapToLong(NetHandler.PanelData.FileRow::dead).sum();
+        // 底部横幅（剩余空间才画）——dead 合计用 onData 预计算（GUI 审计#6）
+        long dead = statDeadTotal;
         int by = ty + th + 10;
         if (by + 26 <= y + h) {
             banner(g, x, by, w, 26, dead == 0,
@@ -463,7 +515,7 @@ public class SfxPanelScreen extends Screen {
         if (data == null) { loadingCard(g, x, y, a); return; }
         if (data.scanning()) { scanningCard(g, x, y, a); return; }
         title(g, x, y, L("sablefix.panel.tab.health"), a);
-        int issues = (int) data.files().stream().filter(f -> f.dead() > 0).count();
+        int issues = statIssueFiles;   // onData 预计算（GUI 审计#6）
         banner(g, x, y + 16, w, 26, issues == 0,
                 issues == 0 ? L("sablefix.panel.health_ok") : L("sablefix.panel.health_issues", issues), a);
 
@@ -492,7 +544,7 @@ public class SfxPanelScreen extends Screen {
             if (f.dead() <= 0) continue;
             if (iy + 20 > ly + cardH - 22) break;   // 给底栏留位，不画穿
             shown++;
-            roundRect(g, x + 8, iy - 4, w - 16, 20, 6, 0x14E05D5D, 0);
+            g.fill(x + 8, iy - 4, x + w - 8, iy + 16, 0x14E05D5D);   // GUI审计#3：行背景直角化（原 roundRect 14 fill）
             dot(g, x + 18, iy + 5, 3, withA(BAD, a));
             dtr(g, f.name(), x + 28, iy, nameMax, withA(TEXT, a), false);
             dtr(g, f.slvlr() ? "slvlr" : "slvls", typeX, iy, 56, withA(FAINT, a), false);
@@ -620,6 +672,7 @@ public class SfxPanelScreen extends Screen {
             if (inBox(mx, ly - 1, cx, 0, cw, 18)) {
                 browseFilter = i;
                 browseScroll = 0;
+                browseCache = null;   // GUI 审计#2：过滤变更 → 排序缓存失效
                 return;
             }
             cx += cw + chipGap;
@@ -643,6 +696,7 @@ public class SfxPanelScreen extends Screen {
             if (inBox(mx, ly - 1, cxx + offset, 0, cw, 18)) {
                 if (browseSort == i) browseSortDesc = !browseSortDesc; else browseSort = i;
                 browseScroll = 0;
+                browseCache = null;   // GUI 审计#2：排序变更 → 缓存失效
                 return;
             }
         }
@@ -713,11 +767,16 @@ public class SfxPanelScreen extends Screen {
         int iy = rowsTop - browseScroll;
         int row = 0;
         browseContentBottom = rowsTop;
-        var list = browseStream().toList();
+        // GUI 审计#2：排序/过滤结果缓存——失效点 onData()（browseCache=null）+ filter/sort 写点；
+        // 首次访问时惰性重算，每帧循环不再全量 sort
+        if (browseCache == null) browseCache = browseStream().toList();
+        var list = browseCache;
         for (NetHandler.PanelData.FileRow f : list) {
             if (iy + 16 > rowsTop) {   // 只画可见区
                 if (iy < rowsBottom) {
-                    if (row % 2 == 0) roundRect(g, x + 8, iy - 4, w - 16, 16, 5, 0x0AFFFFFF, 0);
+                    // GUI 审计#3：行级斑马纹 r=5 在 16px 行高下圆角不可辨——改直角单次 fill
+                    //（原 roundRect = 12 次 fill/行 × 16 行 = 192 次/帧）
+                    if (row % 2 == 0) g.fill(x + 8, iy - 4, x + w - 8, iy + 12, 0x0AFFFFFF);
                     boolean bad = f.dead() > 0;
                     dtr(g, f.name(), x + 16, iy, nameMax, withA(bad ? BAD : (f.size() < 0 ? FAINT : TEXT), a), false);
                     if (f.size() >= 0) {
@@ -762,12 +821,10 @@ public class SfxPanelScreen extends Screen {
         boolean loaded = diagRes.loaded();
         // 状态行客户端本地化：正常=加载/未加载；errorKey 非空=服务器报错（跨语言不串台）
         boolean errored = !diagRes.errorKey().isEmpty();
-        String statusText = errored ? L(diagRes.errorKey())
-                : L(loaded ? "sablefix.diag.loaded" : "sablefix.diag.not_loaded");
         int statusColor = errored ? BAD : (loaded ? OK : WARN);
         dot(g, x + 22, cy2 + 18, 5, withA(statusColor, a));
-        dtr(g, "(" + diagRes.x() + ", " + diagRes.z() + ")  " + statusText,
-                x + 34, cy2 + 12, w - 48, withA(statusColor, a), false);
+        // GUI审计#6：状态行在结果到达时格式化一次（onDiag），render 每帧不再拼 5-6 个临时对象
+        dtr(g, diagStatusLine, x + 34, cy2 + 12, w - 48, withA(statusColor, a), false);
         g.drawString(font, L("sablefix.panel.diag_dim"), x + 22, cy2 + 40, withA(FAINT, a), false);
         dtr(g, diagRes.dim(), x + 90, cy2 + 40, w - 104, withA(TEXT, a), false);
         g.drawString(font, L("sablefix.panel.entities"), x + 22, cy2 + 58, withA(FAINT, a), false);
@@ -801,16 +858,15 @@ public class SfxPanelScreen extends Screen {
 
         roundRect(g, x, cy2, w, infoH, 10, CARD, BORDER | a);
         infoRow(g, x, w, cy2 + 10, L("sablefix.panel.watch_threshold"), L("sablefix.panel.watch_threshold_val"), a);
-        infoRow(g, x, w, cy2 + 28, L("sablefix.panel.watch_dumps"), data.dumpCount() + "", a);
+        infoRow(g, x, w, cy2 + 28, L("sablefix.panel.watch_dumps"), Integer.toString(data.dumpCount()), a);
         infoRow(g, x, w, cy2 + 46, L("sablefix.panel.watch_file"), "logs/sablefix/threaddump-*.txt", a);
         infoRow(g, x, w, cy2 + 64, L("sablefix.panel.watch_manual"), "/sablefix dump", a);
 
         roundRect(g, x, ty, w, tickH, 10, CARD, BORDER | a);
-        // 聚合统计：同 UUID 计数 + 唯一数
-        var all = data.ticketUuids();
-        var counts = new java.util.LinkedHashMap<String, Integer>();
-        for (String u : all) counts.merge(u, 1, Integer::sum);
-        int total = all.size(), unique = counts.size();
+        // 聚合统计（GUI 审计#4）：onData 预聚合一次，render 只读——原实现每帧
+        // new LinkedHashMap + 全量 merge（几百张票时每秒数万次 hash/装箱）
+        var counts = ticketCounts;
+        int total = ticketTotal, unique = ticketUnique;
         g.drawString(font, L("sablefix.panel.ticket_uuids"), x + 12, ty + 8, withA(DIM, a), false);
         g.drawString(font, L("sablefix.panel.tickets_stats", total, unique), x + w - 12 - font.width(L("sablefix.panel.tickets_stats", total, unique)), ty + 8, withA(ACC, a), false);
 
@@ -846,7 +902,7 @@ public class SfxPanelScreen extends Screen {
                 if (iy + 16 > rowsTop) {
                     if (iy < rowsBottom) {
                         boolean dup = e.getValue() > 1;
-                        roundRect(g, x + 8, iy - 4, w - 16, 18, 6, 0x0A58A6FF, 0);
+                        g.fill(x + 8, iy - 4, x + w - 8, iy + 14, 0x0A58A6FF);   // GUI审计#3：行背景直角化
                         dot(g, x + 18, iy + 4, 3, withA(dup ? WARN : ACC, a));
                         dtr(g, e.getKey(), x + 28, iy, w - 92, withA(TEXT, a), false);
                         String cnt = "×" + e.getValue();
@@ -858,6 +914,7 @@ public class SfxPanelScreen extends Screen {
             }
         }
         g.disableScissor();
+        ticketRowsBottom = rowsBottom;   // 滚动 clamp 用（GUI 审计#5：横幅出现时 render 侧才是真值）
         int maxScroll = Math.max(0, ticketContentBottom - rowsBottom);
         if (maxScroll > 0) {
             String hint = ticketScroll <= 0 ? "↓" : (ticketScroll >= maxScroll ? "↑" : "↑↓");
@@ -867,6 +924,7 @@ public class SfxPanelScreen extends Screen {
 
     private int ticketScroll;
     private int ticketContentBottom;
+    private int ticketRowsBottom;           // render 实测可视区底端（滚动 clamp 用）
     private int purgeBtnX = -1, purgeBtnY;
     private boolean purgeConfirm;          // dry 预览后的确认态
     private String purgeMsg;               // 横幅消息（复用 watch banner 上方）
