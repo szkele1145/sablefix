@@ -25,5 +25,5 @@ const data = {
   project_id: 'rPkYnI7j',
   file_parts: ['sablefix-1.2.0.jar'],
 };
-fs.writeFileSync('D:/sfx/proj/mrdata.json', JSON.stringify(data));
+fs.writeFileSync('F:/vibe coding工程/sfx/proj/mrdata.json', JSON.stringify(data));
 console.log('1.2.0 data.json written');

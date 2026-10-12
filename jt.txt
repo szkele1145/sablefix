@@ -1,0 +1,28 @@
+To honour the JVM settings for this build a single-use Daemon process will be forked. For more on this, please refer to https://docs.gradle.org/8.10.2/userguide/gradle_daemon.html#sec:disabling_the_daemon in the Gradle documentation.
+Daemon will be stopped at the end of the build 
+
+> Task :javaToolchains
+
+ + Options
+     | Auto-detection:     Enabled
+     | Auto-download:      Enabled
+
+ + Eclipse Temurin JRE 21.0.11+10-LTS
+     | Location:           C:\Users\一只屑\AppData\Local\Programs\Eclipse Adoptium\jre-21.0.11.10-hotspot
+     | Language Version:   21
+     | Vendor:             Eclipse Temurin
+     | Architecture:       amd64
+     | Is JDK:             false
+     | Detected by:        Current JVM
+
+ + Microsoft JDK 17.0.19+10-LTS
+     | Location:           C:\Users\一只屑\.jdks\ms-17.0.19
+     | Language Version:   17
+     | Vendor:             Microsoft
+     | Architecture:       amd64
+     | Is JDK:             true
+     | Detected by:        IntelliJ
+
+
+BUILD SUCCESSFUL in 5s
+1 actionable task: 1 executed

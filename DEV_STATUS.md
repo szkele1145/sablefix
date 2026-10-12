@@ -30,3 +30,13 @@
 ## 攒批池（低优先）
 - [ ] 面板数据压缩（触发条件：真实用户触达 418KB 包体）
 - [ ] repair 进度持久化（重启后继续提示未修复项——DamageRegistry 已覆盖大半）
+
+## 工程迁移（2026-10-12）：D:\sfx → F:\vibe coding工程\sfx
+
+- **构建环境三件套已就位**：完整 JDK = `F:\gradleuser\jdks\eclipse_adoptium-21-amd64-windows.2`（foojay 下载，含 javac）；
+  gradle = `F:\gradlehome`（junction→gradle-8.10.2）；项目访问 = `F:\sfxlink`（junction→proj，规避 worker classpath 中文/空格路径 bug）
+- **构建命令**：`$env:JAVA_HOME='F:\sfx_jdk'（JRE，仅 launcher 用也 OK，因 NFRT 现走 ECJ）；cd F:\sfxlink; F:\gradlehome\bin\gradle.bat --no-daemon build -g F:\gradleuser`
+  —— 或直接用 foojay JDK 当 JAVA_HOME（推荐）：`$env:JAVA_HOME=(Get-ChildItem F:\gradleuser\jdks -Directory | ? Name -match eclipse).FullName`
+- **脚本路径**：scripts/*.js 已批量改指 F:/vibe coding工程/sfx/proj
+- **凭据**：.ghtoken/.mrtoken 已在新位置 F:\vibe coding工程\sfx\
+- 被占用的 java.exe 已补拷（占用源=旧路径孤儿 gradle 进程，已清理）

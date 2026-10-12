@@ -2,8 +2,8 @@
 const fs = require('fs');
 const path = require('path');
 
-const SRC = 'D:/sfx/proj/src/main/java';
-const LANG_DIR = 'D:/sfx/proj/src/main/resources/assets/sablefix/lang';
+const SRC = 'F:/vibe coding工程/sfx/proj/src/main/java';
+const LANG_DIR = 'F:/vibe coding工程/sfx/proj/src/main/resources/assets/sablefix/lang';
 
 function walk(dir, out = []) {
   for (const f of fs.readdirSync(dir)) {

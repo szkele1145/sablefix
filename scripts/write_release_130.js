@@ -29,6 +29,6 @@ const data = {
   project_id: 'rPkYnI7j',
   file_parts: ['sablefix-1.3.0.jar'],
 };
-fs.writeFileSync('D:/sfx/proj/mrdata.json', JSON.stringify(data));
-fs.writeFileSync('D:/sfx/proj/ghrel.json', JSON.stringify({ tag_name: 'v1.3.0', target_commitish: 'main', name: 'Sable Fix Core 1.3.0', body: changelog }));
+fs.writeFileSync('F:/vibe coding工程/sfx/proj/mrdata.json', JSON.stringify(data));
+fs.writeFileSync('F:/vibe coding工程/sfx/proj/ghrel.json', JSON.stringify({ tag_name: 'v1.3.0', target_commitish: 'main', name: 'Sable Fix Core 1.3.0', body: changelog }));
 console.log('1.3.0 payloads prewritten');

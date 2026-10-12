@@ -4,8 +4,8 @@ const fs = require('fs');
 
 const t = fs.readFileSync('D:/sfx/.mrtoken', 'utf8').trim();
 const boundary = '----sfxrel' + Date.now();
-const jar = fs.readFileSync('D:/sfx/proj/build/libs/sablefix-1.3.0.jar');
-const dataPart = fs.readFileSync('D:/sfx/proj/mrdata.json');
+const jar = fs.readFileSync('F:/vibe coding工程/sfx/proj/build/libs/sablefix-1.3.0.jar');
+const dataPart = fs.readFileSync('F:/vibe coding工程/sfx/proj/mrdata.json');
 
 const body = Buffer.concat([
   Buffer.from('--' + boundary + '\r\nContent-Disposition: form-data; name="data"\r\nContent-Type: application/json\r\n\r\n'),

@@ -29,5 +29,5 @@ const body = [
   '',
   '**反馈：** QQ 群 1129543042 · Telegram @maodie_mods（链接见模组内「关于」页）',
 ].join('\n');
-fs.writeFileSync('D:/sfx/proj/mrpatch.json', JSON.stringify({ body }));
+fs.writeFileSync('F:/vibe coding工程/sfx/proj/mrpatch.json', JSON.stringify({ body }));
 console.log('positioning-clarified body written,', body.length, 'chars');

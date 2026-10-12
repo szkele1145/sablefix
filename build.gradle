@@ -17,6 +17,12 @@ java {
 neoForge {
     version = project.neo_version
 
+    // NFRT 引擎默认用"当前 JVM"跑反编译/重编译——launcher 若是 JRE（无 javac）会炸。
+    // 用 Eclipse Compiler (ECJ) 替代 javac，摆脱对 launcher JDK 的依赖。
+    neoFormRuntime {
+        useEclipseCompiler = true
+    }
+
     runs {
         client {
             client()
