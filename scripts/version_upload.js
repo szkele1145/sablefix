@@ -28,7 +28,7 @@ const req = https.request({
   res.on('end', () => {
     try {
       const j = JSON.parse(d);
-      console.log('✅ Modrinth 1.2.0 uploaded: id=' + j.id + ' status=' + j.status);
+      console.log('✅ Modrinth version uploaded: id=' + j.id + ' status=' + j.status);
     } catch (e) {
       console.log('HTTP', res.statusCode, d.substring(0, 200));
     }
