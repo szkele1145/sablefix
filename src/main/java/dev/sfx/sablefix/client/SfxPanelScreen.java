@@ -513,6 +513,18 @@ public class SfxPanelScreen extends Screen {
         // 底部横幅（剩余空间才画）——dead 合计用 onData 预计算（GUI 审计#6）
         long dead = statDeadTotal;
         int by = ty + th + 10;
+        // 卡死提示条（新功能）：发生过卡死抓栈时在总览页优先展示——用户第一眼看到"最近发生过什么"
+        if (data.lastStallAtMs() > 0) {
+            long agoMs = System.currentTimeMillis() - data.lastStallAtMs();
+            String ago = agoMs < 60_000 ? (agoMs / 1000) + "s"
+                    : agoMs < 3_600_000 ? (agoMs / 60_000) + "min"
+                    : (agoMs / 3_600_000) + "h";
+            if (by + 26 <= y + h) {
+                banner(g, x, by, w, 26, false,
+                        L("sablefix.panel.stall_recent", ago, data.dumpCount()), a);
+                by += 32;
+            }
+        }
         if (by + 26 <= y + h) {
             banner(g, x, by, w, 26, dead == 0,
                     dead == 0 ? L("sablefix.panel.all_ok") : L("sablefix.panel.dead_found", dead), a);

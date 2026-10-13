@@ -166,5 +166,6 @@
   "sablefix.cmd.report_done": "✅ 诊断报告已生成：%s",
   "sablefix.cmd.report_hint": "把这个文件发给求助群即可（含损伤清单/模组日志/线程栈摘要）",
   "sablefix.cmd.report_fail": "报告生成失败：%s",
-  "sablefix.cmd.help_report": "一键生成诊断报告（损伤+日志+线程栈打包成单文件，方便发群求助）"
+  "sablefix.cmd.help_report": "一键生成诊断报告（损伤+日志+线程栈打包成单文件，方便发群求助）",
+  "sablefix.panel.stall_recent": "⚠ 最近卡死：%s 前（累计抓栈 %s 次）——详见「死锁监视」页"
 }

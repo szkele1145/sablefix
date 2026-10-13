@@ -166,5 +166,6 @@
   "sablefix.cmd.report_done": "✅ Diagnostic report written: %s",
   "sablefix.cmd.report_hint": "Send this file when asking for help (contains damage list, mod logs, thread-stack digest)",
   "sablefix.cmd.report_fail": "Report generation failed: %s",
-  "sablefix.cmd.help_report": "one-click diagnostic report (damage + logs + thread stack in a single file)"
+  "sablefix.cmd.help_report": "one-click diagnostic report (damage + logs + thread stack in a single file)",
+  "sablefix.panel.stall_recent": "⚠ Recent stall: %s ago (%s dumps total) — see the Watch tab"
 }
