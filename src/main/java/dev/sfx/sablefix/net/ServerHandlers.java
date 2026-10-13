@@ -85,7 +85,9 @@ public final class ServerHandlers {
     }
 
     /** 启动体检后台化（审计#1）：原在 ServerStarted 主线程同步跑，大存档阻塞开服 ~3.5s。
-     *  与面板扫描共用 SCAN_POOL 天然互斥；体检结果进 DamageRegistry/ModLog（均 synchronized）。 */
+     *  与面板扫描共用 SCAN_POOL 天然互斥；体检结果进 DamageRegistry/ModLog（均 synchronized）。
+     *  修复：结果同时填 SCAN_CACHE——开服扫的那次成果对面板可见（原实现扫完即丢，
+     *  面板打开还要整个重扫一遍，用户看到的是"扫描中"白等）。 */
     public static void runStartupScanAsync(MinecraftServer server) {
         SCAN_POOL.execute(() -> {
             try {
@@ -97,6 +99,17 @@ public final class ServerHandlers {
                 TicketScan.startupScan(server);
             } catch (Exception e) {
                 SableFixMod.LOGGER.warn("启动票据体检任务异常", e);
+            }
+            // 启动扫描结果直接入缓存：面板打开瞬间就有全量数据（60s TTL 内免重扫）
+            if (SCAN_RUNNING.compareAndSet(0, 1)) {
+                try {
+                    Path sublevels = worldDir(server).resolve("sublevels");
+                    SCAN_CACHE.set(buildScan(sublevels, server));
+                } catch (Exception e) {
+                    SableFixMod.LOGGER.warn("启动扫描入缓存失败（面板打开时会重扫）", e);
+                } finally {
+                    SCAN_RUNNING.set(0);
+                }
             }
         });
     }
@@ -124,10 +137,13 @@ public final class ServerHandlers {
             Path sublevels = worldDir(server).resolve("sublevels");
 
             CachedScan cached = SCAN_CACHE.get();
-            if (cached == null) {
-                // 首扫也进后台：立即回"空报告+扫描中"标记，扫完后面板自动刷新拿全量。
-                // 失败冷却期内不再重试（坏存档/IO 故障时避免无限失败循环），改回明确错误状态。
-                boolean coolingDown = System.currentTimeMillis() - lastScanFailureAt < SCAN_FAILURE_COOLDOWN_MS;
+            // 修复：SCAN_FAILED.at=Long.MIN_VALUE 使"过期重扫"分支的
+            // now - at 溢出为负 → 永远不过期 → 冷却结束后依然永远回 FAILED 空报告，
+            // 客户端无限退避（用户报告"一直扫描中"的根因）。
+            // 冷却结束后应允许立即重试真扫描。
+            boolean failedCold = cached == SCAN_FAILED;
+            boolean coolingDown = System.currentTimeMillis() - lastScanFailureAt < SCAN_FAILURE_COOLDOWN_MS;
+            if (cached == null || (failedCold && !coolingDown)) {
                 if (!coolingDown && SCAN_RUNNING.compareAndSet(0, 1)) {
                     SCAN_POOL.execute(() -> {
                         try {
@@ -141,7 +157,7 @@ public final class ServerHandlers {
                     });
                 }
                 cached = coolingDown ? SCAN_FAILED : COLD_SCAN;
-            } else if (System.currentTimeMillis() - cached.at() > CACHE_TTL_MS
+            } else if (!failedCold && System.currentTimeMillis() - cached.at() > CACHE_TTL_MS
                     && SCAN_RUNNING.compareAndSet(0, 1)) {
                 // 过期：立即回旧数据 + 后台重扫（扫描纯文件 IO，不碰 MC API，线程安全）
                 SCAN_POOL.execute(() -> {
