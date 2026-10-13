@@ -61,9 +61,9 @@ public final class SfxCommands {
                         .then(Commands.literal("apply").executes(c -> ticketsPurge(c.getSource(), true))))
                 .then(Commands.literal("diag")
                         .then(Commands.argument("pos", net.minecraft.commands.arguments.coordinates.BlockPosArgument.blockPos())
-                                .executes(c -> diag(c.getSource(), net.minecraft.commands.arguments.coordinates.BlockPosArgument.getLoadedBlockPos(c, "pos"))))));
+                                .executes(c -> diag(c.getSource(), net.minecraft.commands.arguments.coordinates.BlockPosArgument.getLoadedBlockPos(c, "pos")))))
+                .then(Commands.literal("report").executes(c -> report(c.getSource()))));
     }
-
     /**
      * 批量修复：dry = 汇总所有问题文件的死槽计划（不写盘）；
      * apply = 逐文件备份 + 清零。单个文件失败（被占用/IO 错）不中断整体，最后汇总成功/失败数。
@@ -223,6 +223,7 @@ public final class SfxCommands {
         src.sendSuccess(() -> Component.literal("§7/sablefix list §f— ").append(tr("sablefix.cmd.help_list")), false);
         src.sendSuccess(() -> Component.literal("§7/sablefix tickets §f— ").append(tr("sablefix.cmd.help_tickets")), false);
         src.sendSuccess(() -> Component.literal("§7/sablefix dump §f— ").append(tr("sablefix.cmd.help_dump")), false);
+        src.sendSuccess(() -> Component.literal("§7/sablefix report §f— ").append(tr("sablefix.cmd.help_report")), false);
         src.sendSuccess(() -> Component.literal("§7/sablefix repair <file> dry|apply §f— ").append(tr("sablefix.cmd.help_repair")), false);
         src.sendSuccess(() -> Component.literal("§7/sablefix repair-all dry|apply §f— ").append(tr("sablefix.cmd.help_repair_all")), false);
         src.sendSuccess(() -> Component.literal("§7/sablefix tickets-purge dry|apply §f— ").append(tr("sablefix.cmd.help_purge")), false);
@@ -377,11 +378,32 @@ public final class SfxCommands {
             // 兼容性审计：同 repair——Windows 可读共享句柄下的占用语义
             src.sendFailure(tr("sablefix.cmd.purge_locked", tf.getFileName().toString()));
             SableFixMod.LOGGER.warn("tickets-purge: file in use", e);
-            SableFixMod.LOGGER.warn("tickets-purge: file locked", e);
         } catch (Exception e) {
             src.sendFailure(tr("sablefix.cmd.purge_fail", e.getMessage()));
             SableFixMod.LOGGER.error("tickets-purge failed", e);
         }
         return 0;
+    }
+
+    /**
+     * 新功能：一键诊断报告。全量信息（损伤登记簿/模组日志/最新线程栈摘要/运行信息）
+     * 打成单个 txt 到 logs/sablefix/——"求助发群里"不用翻四个地方截图。
+     * 磁盘 IO 走 SCAN_POOL（dump 读取 + 报告写入），结果回主线程回显路径。
+     */
+    private static int report(CommandSourceStack src) {
+        MinecraftServer server = src.getServer();
+        dev.sfx.sablefix.net.ServerHandlers.runAsync(() -> {
+            try {
+                Path out = dev.sfx.sablefix.scan.DiagReport.write();
+                server.execute(() -> {
+                    src.sendSuccess(() -> tr("sablefix.cmd.report_done", out.toString()), false);
+                    src.sendSuccess(() -> tr("sablefix.cmd.report_hint"), false);
+                });
+            } catch (Exception e) {
+                SableFixMod.LOGGER.error("report 生成失败", e);
+                server.execute(() -> src.sendFailure(tr("sablefix.cmd.report_fail", e.getMessage())));
+            }
+        });
+        return 1;
     }
 }

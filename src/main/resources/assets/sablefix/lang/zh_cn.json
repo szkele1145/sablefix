@@ -162,5 +162,9 @@
   "sablefix.cmd.diag_be": "  方块实体: %s",
   "sablefix.damage.admin_notice": "§6[SableFix] §c检测到未处置损伤：%s（%s 处）§7——用 /sablefix repair 修复，详见控制台",
   "sablefix.damage.player_notice": "§6[SableFix] §e服务器存档存在已知损伤，正在由管理员处理，不影响游玩",
-  "sablefix.cmd.help_diag": "区块诊断：加载状态/实体/方块实体（与 GUI 同源）"
+  "sablefix.cmd.help_diag": "区块诊断：加载状态/实体/方块实体（与 GUI 同源）",
+  "sablefix.cmd.report_done": "✅ 诊断报告已生成：%s",
+  "sablefix.cmd.report_hint": "把这个文件发给求助群即可（含损伤清单/模组日志/线程栈摘要）",
+  "sablefix.cmd.report_fail": "报告生成失败：%s",
+  "sablefix.cmd.help_report": "一键生成诊断报告（损伤+日志+线程栈打包成单文件，方便发群求助）"
 }
