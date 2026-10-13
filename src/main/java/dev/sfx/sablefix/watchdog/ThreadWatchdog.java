@@ -9,7 +9,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
@@ -36,6 +35,8 @@ public final class ThreadWatchdog {
     private static volatile long lastTickNanos = System.nanoTime();
     private static volatile long lastGapMs;
     private static volatile long lastDumpNanos;
+    /** 最近一次卡死抓栈的时刻（epoch millis；0=本次运行未发生过）——面板提示条用 */
+    private static volatile long lastStallAtMs;
     private static final AtomicInteger DUMPS = new AtomicInteger();
     private static Thread thread;
 
@@ -71,6 +72,8 @@ public final class ThreadWatchdog {
     public static long lastTickGapMs() { return lastGapMs; }
     /** 本服累计抓栈次数（原子读，供看门狗线程与主线程并发访问） */
     public static int dumpCount() { return DUMPS.get(); }
+    /** 最近一次卡死抓栈的 epoch millis（0=本次运行未卡死过）。面板显示"上次卡死 N 分钟前"。 */
+    public static long lastStallAtMs() { return lastStallAtMs; }
 
     private static void loop() {
         while (running) {
@@ -98,11 +101,13 @@ public final class ThreadWatchdog {
             try (PrintWriter w = new PrintWriter(Files.newBufferedWriter(out, StandardCharsets.UTF_8))) {
                 w.printf("主线程已 %.1f 秒没有 tick%n", stallNanos / 1_000_000_000.0);
                 w.printf("抓取时间: %s%n%n", LocalDateTime.now());
-                for (Map.Entry<Thread, StackTraceElement[]> e : Thread.getAllStackTraces().entrySet()) {
-                    Thread t = e.getKey();
-                    w.printf("\"%s\" %s prio=%d id=%d %s%n", t.getName(),
-                            t.isDaemon() ? "daemon" : "", t.getPriority(), t.getId(), t.getState());
-                    for (StackTraceElement ste : e.getValue()) {
+                // Thread.getAllStackTraces() 在 JDK 20+ 已过时（一致性/活性问题）——
+                // 改用 ThreadMXBean.dumpAllThreads（官方推荐的等价 API，且含锁信息能力）
+                java.lang.management.ThreadMXBean mx = java.lang.management.ManagementFactory.getThreadMXBean();
+                for (java.lang.management.ThreadInfo ti : mx.dumpAllThreads(true, true)) {
+                    w.printf("\"%s\" prio=%d id=%d %s%n", ti.getThreadName(),
+                            ti.getPriority(), ti.getThreadId(), ti.getThreadState());
+                    for (StackTraceElement ste : ti.getStackTrace()) {
                         w.printf("\tat %s%n", ste);
                     }
                     w.println();
@@ -110,6 +115,7 @@ public final class ThreadWatchdog {
             }
             DUMPS.incrementAndGet();
             lastDumpNanos = System.nanoTime();   // 手动抓栈也进冷却，防自动线程紧接着重复抓
+            lastStallAtMs = System.currentTimeMillis();   // 最近卡死时刻（面板提示条）
             pruneOldDumps(dir);
             ModLogHolder.dumped(stallNanos, out);
             SableFixMod.LOGGER.warn("主线程已卡 {} 秒！线程栈已写入 {}", stallNanos / 1_000_000_000.0, out);

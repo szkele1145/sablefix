@@ -101,7 +101,7 @@ public class SfxPanelScreen extends Screen {
                 "16:34:23.602 [WARN] r.-4.7.slvlr: 3 dead pointers (74 live)",
                 "16:34:23.711 [INFO] tickets: 19 force-load tickets, gzip/NBT OK (707 B)",
                 "16:51:08.332 [INFO] panel request: Dev@[/127.0.0.1]");
-        return new NetHandler.PanelData(files, 19, uuids, 41, 0, 22_320_000L, dims, logs, false);
+        return new NetHandler.PanelData(files, 19, uuids, 41, 0, 22_320_000L, dims, logs, false, 0);
     }
 
     static NetHandler.DiagRes demoDiag() {

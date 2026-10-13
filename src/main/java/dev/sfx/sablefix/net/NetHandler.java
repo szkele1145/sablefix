@@ -55,13 +55,15 @@ public final class NetHandler {
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
-    /** S2C：面板数据。文件行 + 票据 + 看门狗状态 + 维度统计 + 运行日志。scanning=true 表示后台扫描未完成，客户端稍后重试。 */
+    /** S2C：面板数据。文件行 + 票据 + 看门狗状态 + 维度统计 + 运行日志。scanning=true 表示后台扫描未完成，客户端稍后重试。
+     *  lastStallAtMs：最近一次卡死抓栈的 epoch millis（0=未发生过）——面板提示条"上次卡死 N 分钟前"。 */
     public record PanelData(
             List<FileRow> files,
             int ticketCount, List<String> ticketUuids,
             long lastTickGapMs, int dumpCount, long uptimeMs,
             List<DimRow> dims,
-            List<String> logLines, boolean scanning) implements CustomPacketPayload {
+            List<String> logLines, boolean scanning,
+            long lastStallAtMs) implements CustomPacketPayload {
 
         public record FileRow(String name, boolean slvlr, long size, int live, int dead) {}
         public record DimRow(String name, int entities, int blockEntities, int chunks) {}
@@ -171,6 +173,7 @@ public final class NetHandler {
         f.writeVarInt(logs.size());
         for (String line : logs) f.writeUtf(line, 384);
         f.writeBoolean(p.scanning());
+        f.writeVarLong(p.lastStallAtMs);
     }
 
     private static PanelData readPanel(FriendlyByteBuf f) {
@@ -196,7 +199,8 @@ public final class NetHandler {
         List<String> logs = new ArrayList<>(Math.min(ln, 200));
         for (int i = 0; i < ln; i++) logs.add(f.readUtf(512));
         boolean scanning = f.readBoolean();
-        return new PanelData(files, tc, uuids, gap, dumps, up, dims, logs, scanning);
+        long stallAt = f.readVarLong();
+        return new PanelData(files, tc, uuids, gap, dumps, up, dims, logs, scanning, stallAt);
     }
 
     /** VarInt 长度防御：负值按 0 处理（恶意/损坏包不踢客户端） */

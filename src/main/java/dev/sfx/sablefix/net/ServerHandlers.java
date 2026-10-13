@@ -219,7 +219,8 @@ public final class ServerHandlers {
             NetHandler.PanelData data = new NetHandler.PanelData(
                     files, ticketCount, uuids,
                     ThreadWatchdog.lastTickGapMs(), ThreadWatchdog.dumpCount(), uptime, dims,
-                    logLines, cached == COLD_SCAN || cached == SCAN_FAILED);
+                    logLines, cached == COLD_SCAN || cached == SCAN_FAILED,
+                    ThreadWatchdog.lastStallAtMs());
             ctx.reply(data);
         } catch (Exception e) {
             SableFixMod.LOGGER.error("面板数据生成失败", e);
