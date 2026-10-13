@@ -101,7 +101,7 @@ public class SfxPanelScreen extends Screen {
                 "16:34:23.602 [WARN] r.-4.7.slvlr: 3 dead pointers (74 live)",
                 "16:34:23.711 [INFO] tickets: 19 force-load tickets, gzip/NBT OK (707 B)",
                 "16:51:08.332 [INFO] panel request: Dev@[/127.0.0.1]");
-        return new NetHandler.PanelData(files, 19, uuids, 41, 0, 22_320_000L, dims, logs, false, 0);
+        return new NetHandler.PanelData(files, 19, uuids, 41, 0, 22_320_000L, dims, logs, false, 0, java.util.List.of());
     }
 
     static NetHandler.DiagRes demoDiag() {
@@ -590,6 +590,26 @@ public class SfxPanelScreen extends Screen {
             g.drawString(font, L("sablefix.panel.no_fix_needed"), x + 12, iy, withA(OK, a), false);
         }
         g.drawString(font, L("sablefix.panel.readonly_note"), x + 12, ly + cardH - 14, withA(FAINT, a), false);
+
+        // ---- 备份管理卡片（新功能）：修复/清理的自动备份清单，新→旧，最新 8 条 ----
+        var backups = data.backups();
+        if (!backups.isEmpty()) {
+            int shown2 = 0;
+            int byy = iy + 14;
+            g.drawString(font, L("sablefix.panel.backups_title"), x + 12, byy, withA(DIM, a), false);
+            byy += 12;
+            for (var b : backups) {
+                if (byy + 12 > ly + cardH - 4 || shown2 >= 8) break;
+                dtr(g, b.name(), x + 28, byy, w - 170, withA(TEXT, a), false);
+                dtr(g, fmtSize(b.size()), x + w - 128, byy, 44, withA(DIM, a), false);
+                dtr(g, fmtDur(System.currentTimeMillis() - b.atMs()), x + w - 74, byy, 62, withA(FAINT, a), false);
+                byy += 13;
+                shown2++;
+            }
+            if (backups.size() > 8) {
+                dtr(g, L("sablefix.panel.backups_more", backups.size() - 8), x + 28, byy, w - 60, withA(FAINT, a), false);
+            }
+        }
     }
 
     // ---- 修复交互状态 ----

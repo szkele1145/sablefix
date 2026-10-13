@@ -17,6 +17,8 @@ import net.minecraft.world.level.storage.LevelResource;
 import net.minecraft.world.phys.AABB;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
 
+import java.io.IOException;
+import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -115,15 +117,16 @@ public final class ServerHandlers {
     }
 
     private record CachedScan(SubLevelScan.Report report, List<String> ticketUuids,
-                              int ticketCount, long at) {}
+                              int ticketCount, long at,
+                              List<NetHandler.PanelData.BackupRow> backups) {}
 
     /** 首扫未完成时回给面板的占位报告（客户端据 scanning 标志显示"扫描中"并自动重试）。 */
     private static final CachedScan COLD_SCAN = new CachedScan(
-            new SubLevelScan.Report(List.of(), List.of(), 0, 0), List.of(), 0, Long.MIN_VALUE);
+            new SubLevelScan.Report(List.of(), List.of(), 0, 0), List.of(), 0, Long.MIN_VALUE, List.of());
 
     /** 首扫失败冷却期的占位（ticketCount=-2；客户端据 scanning=false + 空 files 显示冷却提示，服务器日志有真实错误）。 */
     private static final CachedScan SCAN_FAILED = new CachedScan(
-            new SubLevelScan.Report(List.of(), List.of(), 0, 0), List.of(), -2, Long.MIN_VALUE);
+            new SubLevelScan.Report(List.of(), List.of(), 0, 0), List.of(), -2, Long.MIN_VALUE, List.of());
 
     public static void onPanelReq(IPayloadContext ctx) {
         if (!(ctx.player() instanceof ServerPlayer player)) return;
@@ -220,7 +223,8 @@ public final class ServerHandlers {
                     files, ticketCount, uuids,
                     ThreadWatchdog.lastTickGapMs(), ThreadWatchdog.dumpCount(), uptime, dims,
                     logLines, cached == COLD_SCAN || cached == SCAN_FAILED,
-                    ThreadWatchdog.lastStallAtMs());
+                    ThreadWatchdog.lastStallAtMs(),
+                    cached.backups());
             ctx.reply(data);
         } catch (Exception e) {
             SableFixMod.LOGGER.error("面板数据生成失败", e);
@@ -245,7 +249,34 @@ public final class ServerHandlers {
         } catch (Exception e) {
             SableFixMod.LOGGER.warn("面板读票据失败", e);
         }
-        return new CachedScan(report, uuids, ticketCount, System.currentTimeMillis());
+        // 备份清单（备份管理页）：backups/sablefix 下的 .bak 文件，按时间倒序取前 64
+        List<NetHandler.PanelData.BackupRow> backups = listBackups(server);
+        return new CachedScan(report, uuids, ticketCount, System.currentTimeMillis(), backups);
+    }
+
+    /** 收集 backups/sablefix 备份清单（修复/清理的自动备份）。目录读取廉价（<几十条文件名），
+     *  随扫描缓存一起走——缓存 TTL 内多次开面板零重复 IO。失败静默空清单（备份页显示"无备份"）。 */
+    private static List<NetHandler.PanelData.BackupRow> listBackups(MinecraftServer server) {
+        try {
+            Path world = worldDir(server);
+            Path backupDir = world.resolve("backups").resolve("sablefix");
+            if (!Files.isDirectory(backupDir)) return List.of();
+            List<NetHandler.PanelData.BackupRow> out = new ArrayList<>();
+            try (DirectoryStream<Path> ds = Files.newDirectoryStream(backupDir, "*.bak")) {
+                for (Path p : ds) {
+                    try {
+                        out.add(new NetHandler.PanelData.BackupRow(
+                                p.getFileName().toString(),
+                                Files.size(p),
+                                Files.getLastModifiedTime(p).toMillis()));
+                    } catch (IOException ignored) {}
+                }
+            }
+            out.sort((a, b) -> Long.compare(b.atMs(), a.atMs()));   // 新→旧
+            return out.size() > 64 ? out.subList(0, 64) : out;
+        } catch (Exception e) {
+            return List.of();
+        }
     }
 
     /** GUI 修复请求：dry 预览 / apply 备份+清零。全部主线程执行（文件小、耗时毫秒级）。 */

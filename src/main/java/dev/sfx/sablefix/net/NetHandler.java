@@ -56,17 +56,21 @@ public final class NetHandler {
     }
 
     /** S2C：面板数据。文件行 + 票据 + 看门狗状态 + 维度统计 + 运行日志。scanning=true 表示后台扫描未完成，客户端稍后重试。
-     *  lastStallAtMs：最近一次卡死抓栈的 epoch millis（0=未发生过）——面板提示条"上次卡死 N 分钟前"。 */
+     *  lastStallAtMs：最近一次卡死抓栈的 epoch millis（0=未发生过）——面板提示条"上次卡死 N 分钟前"。
+     *  backups：backups/sablefix 下的备份清单（备份管理页用；最多 64 条，超出只保留最新——防帧超限）。 */
     public record PanelData(
             List<FileRow> files,
             int ticketCount, List<String> ticketUuids,
             long lastTickGapMs, int dumpCount, long uptimeMs,
             List<DimRow> dims,
             List<String> logLines, boolean scanning,
-            long lastStallAtMs) implements CustomPacketPayload {
+            long lastStallAtMs,
+            List<BackupRow> backups) implements CustomPacketPayload {
 
         public record FileRow(String name, boolean slvlr, long size, int live, int dead) {}
         public record DimRow(String name, int entities, int blockEntities, int chunks) {}
+        /** 备份行：文件名（含时间戳后缀）+ 字节数 + 修改时间（epoch millis） */
+        public record BackupRow(String name, long size, long atMs) {}
 
         public static final Type<PanelData> TYPE = new Type<>(id("panel_data"));
         public static final StreamCodec<FriendlyByteBuf, PanelData> CODEC = StreamCodec.of(NetHandler::writePanel, NetHandler::readPanel);
@@ -174,6 +178,13 @@ public final class NetHandler {
         for (String line : logs) f.writeUtf(line, 384);
         f.writeBoolean(p.scanning());
         f.writeVarLong(p.lastStallAtMs);
+        // 备份清单：最多 64 条（buildScan 侧已截断），防帧超限
+        List<PanelData.BackupRow> backups = p.backups.size() > 64
+                ? p.backups.subList(0, 64) : p.backups;
+        f.writeVarInt(backups.size());
+        for (PanelData.BackupRow b : backups) {
+            f.writeUtf(b.name(), 192); f.writeVarLong(b.size()); f.writeVarLong(b.atMs());
+        }
     }
 
     private static PanelData readPanel(FriendlyByteBuf f) {
@@ -200,7 +211,12 @@ public final class NetHandler {
         for (int i = 0; i < ln; i++) logs.add(f.readUtf(512));
         boolean scanning = f.readBoolean();
         long stallAt = f.readVarLong();
-        return new PanelData(files, tc, uuids, gap, dumps, up, dims, logs, scanning, stallAt);
+        int bn = clampCount(f.readVarInt(), 64);
+        List<PanelData.BackupRow> backups = new ArrayList<>(bn);
+        for (int i = 0; i < bn; i++) {
+            backups.add(new PanelData.BackupRow(f.readUtf(192), f.readVarLong(), f.readVarLong()));
+        }
+        return new PanelData(files, tc, uuids, gap, dumps, up, dims, logs, scanning, stallAt, backups);
     }
 
     /** VarInt 长度防御：负值按 0 处理（恶意/损坏包不踢客户端） */
