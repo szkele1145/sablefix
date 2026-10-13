@@ -515,7 +515,7 @@ public class SfxPanelScreen extends Screen {
         int by = ty + th + 10;
         // 卡死提示条（新功能）：发生过卡死抓栈时在总览页优先展示——用户第一眼看到"最近发生过什么"
         if (data.lastStallAtMs() > 0) {
-            long agoMs = System.currentTimeMillis() - data.lastStallAtMs();
+            long agoMs = Math.max(0, System.currentTimeMillis() - data.lastStallAtMs());   // 回拨防护
             String ago = agoMs < 60_000 ? (agoMs / 1000) + "s"
                     : agoMs < 3_600_000 ? (agoMs / 60_000) + "min"
                     : (agoMs / 3_600_000) + "h";
@@ -596,7 +596,9 @@ public class SfxPanelScreen extends Screen {
         if (!backups.isEmpty()) {
             int shown2 = 0;
             int byy = iy + 14;
-            g.drawString(font, L("sablefix.panel.backups_title"), x + 12, byy, withA(DIM, a), false);
+            if (byy + 12 <= ly + cardH - 4) {   // 回归自审#9：标题同款边界检查（坏文件满列表时防溢出）
+                g.drawString(font, L("sablefix.panel.backups_title"), x + 12, byy, withA(DIM, a), false);
+            }
             byy += 12;
             for (var b : backups) {
                 if (byy + 12 > ly + cardH - 4 || shown2 >= 8) break;
@@ -1151,6 +1153,7 @@ public class SfxPanelScreen extends Screen {
     }
 
     private static String fmtDur(long ms) {
+        if (ms < 0) ms = 0;   // 时钟回拨防护（回归自审#10：负值会打出 "-3-05" 乱串）
         long s = ms / 1000;
         long h = s / 3600, m = (s % 3600) / 60, sec = s % 60;
         return h > 0 ? L("sablefix.panel.dur_h", h, String.format("%02d", m))

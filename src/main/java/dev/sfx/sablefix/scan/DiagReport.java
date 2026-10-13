@@ -37,10 +37,16 @@ public final class DiagReport {
         // 损伤登记簿
         List<DamageRegistry.Entry> dmg = DamageRegistry.snapshot();
         sb.append("--- 损伤登记簿 (").append(dmg.size()).append(" 项) ---\n");
+        DateTimeFormatter tsFmt = DateTimeFormatter.ofPattern("MM-dd HH:mm:ss");
         for (var e : dmg) {
             sb.append("  ").append(e.kind).append(" ×").append(e.count).append("  ")
-                    .append(e.file).append("  (首次 ").append(e.firstSeenMs)
-                    .append(", 最近 ").append(e.lastSeenMs).append(")\n");
+                    .append(e.file).append("  (首次 ")
+                    .append(java.time.Instant.ofEpochMilli(e.firstSeenMs)
+                            .atZone(java.time.ZoneId.systemDefault()).format(tsFmt))
+                    .append(", 最近 ")
+                    .append(java.time.Instant.ofEpochMilli(e.lastSeenMs)
+                            .atZone(java.time.ZoneId.systemDefault()).format(tsFmt))
+                    .append(")\n");
         }
         sb.append('\n');
 
