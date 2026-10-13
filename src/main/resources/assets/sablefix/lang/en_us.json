@@ -48,7 +48,7 @@
   "sablefix.panel.log_scrolled": " · scrolled up %s lines",
   "sablefix.panel.log_hint": "Scroll back down to reset",
   "sablefix.panel.about_qq": "Feedback QQ group 1129543042",
-  "sablefix.panel.about_ver": "Sable Fix Core v1.4.0 — deadlock forensics & save repair",
+  "sablefix.panel.about_ver": "Sable Fix Core v1.4.1 — deadlock forensics & save repair",
   "sablefix.panel.about_what": "What it does",
   "sablefix.panel.about_what1": "Sable (Aeronautics) ships and airships live in separate sublevel files.",
   "sablefix.panel.about_what2": "Corrupted pointers there fail silently — structures just vanish;",
