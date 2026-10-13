@@ -17,8 +17,9 @@ public final class NetHandler {
      *  NeoForge 拒绝并给出清晰提示，而不是运行期才"网络通道抽风"。
      *  v1: 1.0.0–1.3.0（panel/diag + repair + purge，期间变更未 bump 是历史教训）
      *  v2: 1.3.1（DiagRes.errorKey 客户端本地化 + 发送侧截断语义确立）
-     *  v3: 1.4.0（负 VarInt clamp、日志截断方向修正——接收语义变化） */
-    public static final String PROTOCOL_VERSION = "3";
+     *  v3: 1.4.0（负 VarInt clamp、日志截断方向修正——接收语义变化）
+     *  v4: 1.5.0（PanelData 增 lastStallAtMs + backups 字段——载荷格式变更） */
+    public static final String PROTOCOL_VERSION = "4";
 
     public static void register(net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent event) {
         PayloadRegistrar reg = event.registrar(PROTOCOL_VERSION);
