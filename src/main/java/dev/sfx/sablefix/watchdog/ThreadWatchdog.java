@@ -16,7 +16,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * E：主线程卡死监视器。
  * 原版看门狗 60 秒直接杀服，且只留下被 park 的那一层栈。
- * 这里在卡死 20 秒时就把全部线程栈写盘，每 15 秒再补一份，
+ * 这里在卡死 20 秒时就把全部线程栈写盘，每 5 分钟再补一份，
  * 保证下一次 save-all 卡死时能拿到"谁该完成任务却没干"的现场。
  *
  * 线程模型：onTick 由主线程调用；loop 由守护线程调用；
@@ -24,7 +24,10 @@ import java.util.concurrent.atomic.AtomicLong;
  */
 public final class ThreadWatchdog {
     private static final long ALERT_NANOS = 20_000_000_000L;
-    private static final long REDUMP_NANOS = 15_000_000_000L;
+    /** 补抓间隔 5 分钟（用户反馈：卡死期间每 15s 一份会把内存/磁盘打爆——
+     *  一份全线程栈 50-500KB，卡 1 小时 = 240 份 ≈ 100MB。改 300s：同场景 12 份，
+     *  且 50 份保留上限下足够覆盖 10 小时的卡死现场）。 */
+    private static final long REDUMP_NANOS = 300_000_000_000L;
     private static final long POLL_MILLIS = 5_000L;
     /** 损伤登记簿的周期提醒间隔（DamageRegistry.periodicWarn 使用） */
     public static final long WARN_PERIOD_MS = 5 * 60_000L;
