@@ -16,9 +16,13 @@ function walk(dir, out = []) {
 }
 
 const used = new Set();
+// 已知的系统属性名（sablefix.demo 等）——不是 lang key，审计排除
+const NON_LANG = new Set(['sablefix.demo', 'sablefix.demo.tab', 'sablefix.scale']);
 for (const file of walk(SRC)) {
   const t = fs.readFileSync(file, 'utf8');
-  for (const m of t.matchAll(/"(sablefix\.[a-z0-9_.]+)"/g)) used.add(m[1]);
+  for (const m of t.matchAll(/"(sablefix\.[a-z0-9_.]+)"/g)) {
+    if (!NON_LANG.has(m[1])) used.add(m[1]);
+  }
 }
 
 const zh = JSON.parse(fs.readFileSync(path.join(LANG_DIR, 'zh_cn.json'), 'utf8'));

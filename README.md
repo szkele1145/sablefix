@@ -35,6 +35,9 @@ Sable 存档自愈与诊断核心（Minecraft 1.21.1 / NeoForge 21.1.x，单 jar
   - `/sablefix repair <file> dry|apply` 修复单个子层级文件 · `repair-all dry|apply` 批量修复
   - `/sablefix tickets-purge dry|apply` 清空 force-load 票据
   - `/sablefix diag <x y z>` 区块诊断（加载状态/实体数/方块实体数）
+  - `/sablefix fix` **一键修复**：屏蔽 Sable 写回 → 修复全部 → 踢全体玩家 → 停服（⚠ 会踢人并停止服务器，需面板自动重启）
+  - `/sablefix unmask` 兜底解锁：fix 被中断后清除残留只读标记
+  - `/sablefix report` 一键诊断报告（损伤+日志+线程栈打包成单文件，发群求助用）
 - **客户端**：游戏内输入 `/sfxpanel` 打开图形面板（需服务端也装本 mod）
   - 存档体检页每个问题文件旁有「修复」按钮（dry 预览 → 确认清零）
   - 死锁监视页有「清理票据」按钮
@@ -49,6 +52,8 @@ Sable 存档自愈与诊断核心（Minecraft 1.21.1 / NeoForge 21.1.x，单 jar
    —— 往「谁 patch 了 saveAllChunks」方向查，不是往存档数据损坏方向查。
 2. 数据手术（票据增删、指针修复）对这类死锁**完全无效**，别浪费时间。
 3. 启动日志里的 mixin 冲突警告（`@Redirect conflict. Skipping ...`）是重要线索。
+4. **运行时修复会被 Sable 周期写回覆盖**（内存索引定期落盘）——修了重启又出现的死循环，
+   根治方法是 `/sablefix fix`（屏蔽写回后修复再停服）。
 
 ## 构建
 

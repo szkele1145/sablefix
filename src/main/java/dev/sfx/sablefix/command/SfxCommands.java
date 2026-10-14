@@ -73,6 +73,11 @@ public final class SfxCommands {
     private static int unmask(CommandSourceStack src) {
         MinecraftServer server = src.getServer();
         int n = dev.sfx.sablefix.scan.SableWriteMask.unmaskAll(server);
+        // 五审#5：闭环——unmask 修完清登记（否则 STALE_READONLY 每 5 分钟 WARN 永远报、跨重启持久化）
+        if (n >= 0) {
+            dev.sfx.sablefix.scan.DamageRegistry.clear(
+                    dev.sfx.sablefix.scan.DamageRegistry.Kind.STALE_READONLY, "<stale read-only files>");
+        }
         final int fN = n;
         src.sendSuccess(() -> tr("sablefix.cmd.unmask_done", fN), false);
         return 1;

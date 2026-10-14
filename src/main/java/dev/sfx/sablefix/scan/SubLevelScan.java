@@ -90,6 +90,10 @@ public final class SubLevelScan {
             SableFixMod.LOGGER.error("{}", msg);
             // 二轮审计#3：独立 kind——进服提示说"用 unmask 解除"而非误导性的"用 repair 修复"
             DamageRegistry.register(DamageRegistry.Kind.STALE_READONLY, "<stale read-only files>", n);
+        } else {
+            // 五审#5：上次登记过 STALE_READONLY 但现在文件已全部可写（管理员手动取消了只读/
+            // unmask 跑过但清登记失败）——闭环清登记，防止 JSON 里的陈旧条目跨重启永久 WARN
+            DamageRegistry.clear(DamageRegistry.Kind.STALE_READONLY, "<stale read-only files>");
         }
         return n;
     }

@@ -40,3 +40,5 @@
 - **脚本路径**：scripts/*.js 已批量改指 F:/vibe coding工程/sfx/proj
 - **凭据**：.ghtoken/.mrtoken 已在新位置 F:\vibe coding工程\sfx\
 - 被占用的 java.exe 已补拷（占用源=旧路径孤儿 gradle 进程，已清理）
+> ⚠ **历史文档**：本文档停更于 v1.2.0 时期。当前版本 1.5.x 的新命令（fix/unmask/report）、
+> 协议演进（v4/v5）、DamageRegistry 新 kind（STALE_READONLY）以 README.md 与发布页 changelog 为准。

@@ -67,7 +67,7 @@
   "sablefix.panel.about_readonly1": "体检全程只读；修复支持 /sablefix repair <文件> dry|apply（预览后确认），",
   "sablefix.panel.about_readonly2": "批量 repair-all、票据清理 tickets-purge——全部先自动备份再动一个字节。",
   "sablefix.panel.about_cmds": "命令",
-  "sablefix.panel.about_cmds1": "/sablefix check·list·tickets·dump·repair·repair-all·tickets-purge·diag",
+  "sablefix.panel.about_cmds1": "/sablefix check·list·tickets·dump·repair·repair-all·tickets-purge·diag·fix·unmask·report",
   "sablefix.panel.about_cmds2": "面板每 30 秒自动刷新；卡死现场每 5 分钟自动补抓，最多保留 50 份。",
   "sablefix.panel.browse_healthy": "（其余 %s 个文件全部健康）",
   "sablefix.cmd.help_title": "=== Sable Fix Core 帮助 ===",

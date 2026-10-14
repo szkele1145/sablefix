@@ -67,7 +67,7 @@
   "sablefix.panel.about_readonly1": "Checks are read-only; repair via /sablefix repair <file> dry|apply (preview first),",
   "sablefix.panel.about_readonly2": "batch repair-all, ticket purge — always backed up before a single byte is touched.",
   "sablefix.panel.about_cmds": "Commands",
-  "sablefix.panel.about_cmds1": "/sablefix check·list·tickets·dump·repair·repair-all·tickets-purge·diag",
+  "sablefix.panel.about_cmds1": "/sablefix check·list·tickets·dump·repair·repair-all·tickets-purge·diag·fix·unmask·report",
   "sablefix.panel.about_cmds2": "Panel auto-refreshes every 30 s; stall dumps re-taken every 5 min, 50 kept max.",
   "sablefix.panel.browse_healthy": "(remaining %s files all healthy)",
   "sablefix.cmd.help_title": "=== Sable Fix Core Help ===",

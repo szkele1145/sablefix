@@ -29,3 +29,6 @@
 - [ ] 同组合 + 人工构造死锁：观察线程正常标记、正常跳过、正常 WARN
 - [ ] 摘掉 chunktreefix：跳过逻辑不再触发（损伤登记簿不新增）
 - [ ] 仅 vanilla（无 Sable）：模组静默（sublevels 目录不存在时不报错不注册）
+
+> ⚠ **历史文档**：本文档停更于 v1.2.0 时期。当前版本 1.5.x 的新命令（fix/unmask/report）、
+> 协议演进（v4/v5）、DamageRegistry 新 kind（STALE_READONLY）以 README.md 与发布页 changelog 为准。
