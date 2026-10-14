@@ -174,8 +174,12 @@ public final class NetHandler {
         f.writeVarLong(p.lastTickGapMs());
         f.writeVarInt(p.dumpCount());
         f.writeVarLong(p.uptimeMs());
-        f.writeVarInt(p.dims.size());
-        for (PanelData.DimRow d : p.dims) {
+        // 六审#6：dims 写侧补截断——原读侧 clamp(256) 而写侧无截断，>256 维度的病态环境
+        // 下读循环少读条目导致后续字段错位。写读对齐。
+        List<PanelData.DimRow> dims = p.dims.size() > MAX_DIMS
+                ? p.dims.subList(0, MAX_DIMS) : p.dims;
+        f.writeVarInt(dims.size());
+        for (PanelData.DimRow d : dims) {
             f.writeUtf(d.name(), 128); f.writeVarInt(d.entities());
             f.writeVarInt(d.blockEntities()); f.writeVarInt(d.chunks());
         }
@@ -194,22 +198,23 @@ public final class NetHandler {
 
     private static PanelData readPanel(FriendlyByteBuf f) {
         // 模糊审计：readVarInt 可为负 → new ArrayList<>(负) 抛 IAE 踢客户端。四处 clamp 到 ≥0。
+        // 六审#1：readUtf 补显式上限与写侧逐字对齐（纵深防御——恶意/损坏包不依赖 32767 默认值）
         int n = clampCount(f.readVarInt(), MAX_FILES);
         List<PanelData.FileRow> files = new ArrayList<>(Math.min(n, 1024));
         for (int i = 0; i < n; i++) {
-            files.add(new PanelData.FileRow(f.readUtf(), f.readBoolean(), f.readVarLong(), f.readVarInt(), f.readVarInt()));
+            files.add(new PanelData.FileRow(f.readUtf(128), f.readBoolean(), f.readVarLong(), f.readVarInt(), f.readVarInt()));
         }
         int tc = f.readVarInt();
         int un = clampCount(f.readVarInt(), MAX_UUIDS);
         List<String> uuids = new ArrayList<>(Math.min(un, 256));
-        for (int i = 0; i < un; i++) uuids.add(f.readUtf());
+        for (int i = 0; i < un; i++) uuids.add(f.readUtf(64));
         long gap = f.readVarLong();
         int dumps = f.readVarInt();
         long up = f.readVarLong();
         int dn = clampCount(f.readVarInt(), MAX_DIMS);
         List<PanelData.DimRow> dims = new ArrayList<>(Math.min(dn, 16));
         for (int i = 0; i < dn; i++) {
-            dims.add(new PanelData.DimRow(f.readUtf(), f.readVarInt(), f.readVarInt(), f.readVarInt()));
+            dims.add(new PanelData.DimRow(f.readUtf(128), f.readVarInt(), f.readVarInt(), f.readVarInt()));
         }
         int ln = clampCount(f.readVarInt(), MAX_LOGS);
         List<String> logs = new ArrayList<>(Math.min(ln, 200));

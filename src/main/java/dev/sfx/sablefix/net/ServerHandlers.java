@@ -186,8 +186,9 @@ public final class ServerHandlers {
             }
             int healthy = r.scannedSlvlr() + r.scannedSlvls() - r.slvlr().size() - r.slvls().size();
             if (healthy > 0) {
-                // 复用 GUI 的 browse_healthy key：服务端按服务器 locale 渲染，客户端英文界面也能读懂
-                files.add(new NetHandler.PanelData.FileRow(
+                // 复用 GUI 的 browse_healthy key：服务端按服务器 locale 渲染，客户端英文界面也能读懂。
+                // 六审#3：汇总行置顶（原 add 尾部——files 超 512 截断保头时"全部健康"提示被静默切掉）
+                files.add(0, new NetHandler.PanelData.FileRow(
                         net.minecraft.network.chat.Component.translatable("sablefix.panel.browse_healthy", healthy).getString(),
                         true, -1, -1, 0));
             }
