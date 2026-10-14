@@ -48,7 +48,7 @@
   "sablefix.panel.log_scrolled": " · 已上翻 %s 行",
   "sablefix.panel.log_hint": "滚轮向下翻到底即复位",
   "sablefix.panel.about_qq": "问题反馈Q群 1129543042",
-  "sablefix.panel.about_ver": "Sable Fix Core v1.5.0 — 死锁取证与存档修复核心",
+  "sablefix.panel.about_ver": "Sable Fix Core v1.5.1 — 死锁取证与存档修复核心",
   "sablefix.panel.about_what": "它是干嘛的",
   "sablefix.panel.about_what1": "Sable（航空学）的船和飞行器存在独立的子层级文件里。",
   "sablefix.panel.about_what2": "这类文件一旦指针损坏，游戏不会报错，只会悄悄丢结构；",
