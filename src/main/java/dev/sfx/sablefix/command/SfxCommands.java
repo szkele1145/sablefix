@@ -98,8 +98,9 @@ public final class SfxCommands {
         src.sendSuccess(() -> tr("sablefix.cmd.fix_started"), false);
         dev.sfx.sablefix.net.ServerHandlers.runAsync(() -> {
             try {
-                // 1. 屏蔽：sublevels 全部只读（Sable 周期写回撞上只读会走自身异常处理，不影响服运行）
-                dev.sfx.sablefix.scan.SableWriteMask.maskAll(server);
+                // 1. 屏蔽：sublevels 全部只读（Sable 周期写回撞上只读会走自身异常处理，不影响服运行）。
+                //    二轮审计#6：Linux 无 dos:readonly → maskAll 返回 false，降级为纯修复模式
+                boolean masked = dev.sfx.sablefix.scan.SableWriteMask.maskAll(server);
                 // 2. 全量修复（逐文件：解锁 → 备份+清零 → 回锁）
                 Path dir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
                 SubLevelScan.Report r = SubLevelScan.scan(dir);
@@ -123,21 +124,25 @@ public final class SfxCommands {
                     }
                 }
                 final int fOk = ok, fFail = fail, fCleared = cleared;
-                SableFixMod.LOGGER.warn("fix: {} ok, {} failed, {} slots cleared", ok, fail, cleared);
-                server.execute(() -> src.sendSuccess(() -> tr("sablefix.cmd.fix_done", fOk, fFail, fCleared), false));
-                // 3+4. 回主线程：踢全体 + 停服（unmask 全扫版——清单+目录双保险）
+                final boolean fMasked = masked;
+                SableFixMod.LOGGER.warn("fix: {} ok, {} failed, {} slots cleared, masked={}", ok, fail, cleared, masked);
+                // 3+4. 回主线程终局：踢全体 + unmask + halt。
+                //    二轮审计#1：endFix 移到这里（halt 之前）——守卫覆盖 halt 投递窗口，
+                //    第一个终局执行时 FIX_RUNNING 仍为 true，第二个 fix 进不来 → 无交错。
+                //    若终局 lambda 没执行到（halt 前进程死）——反正进程都没了，守卫无意义。
                 server.execute(() -> {
+                    src.sendSuccess(() -> tr("sablefix.cmd.fix_done", fOk, fFail, fCleared, fMasked), false);
                     for (ServerPlayer p : server.getPlayerList().getPlayers()) {
                         p.connection.disconnect(tr("sablefix.cmd.fix_kick"));
                     }
                     dev.sfx.sablefix.scan.SableWriteMask.unmaskAll(server);
+                    dev.sfx.sablefix.scan.SableWriteMask.endFix();
                     server.halt(false);
                 });
             } catch (Exception e) {
                 SableFixMod.LOGGER.error("fix 失败（不重启，解除屏蔽）", e);
                 dev.sfx.sablefix.scan.SableWriteMask.unmaskAll(server);
                 server.execute(() -> src.sendFailure(tr("sablefix.cmd.fix_fail", e.getMessage())));
-            } finally {
                 dev.sfx.sablefix.scan.SableWriteMask.endFix();
             }
         });
@@ -188,7 +193,10 @@ public final class SfxCommands {
                 final String fname = p.file().getFileName().toString();
                 final int no = idx;
                 try {
-                    SubLevelRepair.RepairResult res = SubLevelRepair.apply(p);
+                    // 二轮审计#4：包 withWritable——与 fix 并发（SCAN_POOL 串行但时序上可能在 fix 屏蔽期间）
+                    // 时不再因只读全军 AccessDenied；was=false 时等价直调（不回锁，幂等）
+                    SubLevelRepair.RepairResult res = dev.sfx.sablefix.scan.SableWriteMask.withWritable(p.file(),
+                            () -> { try { return SubLevelRepair.apply(p); } catch (IOException e) { throw new RuntimeException(e); } });
                     okFiles++;
                     cleared += res.cleared();
                     lastBackup = res.backup();

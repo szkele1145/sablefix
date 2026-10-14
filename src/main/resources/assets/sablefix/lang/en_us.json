@@ -172,11 +172,12 @@
   "sablefix.panel.backups_more": "…%s more older backups",
   "sablefix.panel.repair_note_live": "⚠ Server running: repairs may be overwritten by Sable's periodic write-back. Stop the server to make repairs permanent",
   "sablefix.cmd.fix_started": "§6[SableFix] §eOne-click fix started: mask Sable write-back → repair → kick & restart…",
-  "sablefix.cmd.fix_done": "§6[SableFix] §aFix complete: %s files OK / %s failed / %s slots cleared. Server stopping — make sure your panel auto-restarts it or start it manually",
+  "sablefix.cmd.fix_done": "§6[SableFix] §aFix complete: %s files OK / %s failed / %s slots cleared (mask: %s). Server stopping — make sure your panel auto-restarts it or start it manually",
   "sablefix.cmd.fix_kick": "SableFix one-click repair triggered — server restarting immediately, reconnect shortly",
   "sablefix.cmd.fix_fail": "§6[SableFix] §cFix failed: %s (no restart; write-back mask released)",
   "sablefix.cmd.help_fix": "one-click fix: mask Sable write-back → repair-all → kick everyone → auto restart (runtime repairs no longer overwritten)",
   "sablefix.cmd.fix_busy": "§6[SableFix] §cA fix is already running — duplicate execution rejected (race protection)",
   "sablefix.cmd.unmask_done": "§6[SableFix] §aUnlocked %s stale read-only sublevel files (Sable write-back restored)",
-  "sablefix.cmd.help_unmask": "fallback unlock: clears stale read-only flags left by an interrupted fix (run when Sable cannot save sublevels)"
+  "sablefix.cmd.help_unmask": "fallback unlock: clears stale read-only flags left by an interrupted fix (run when Sable cannot save sublevels)",
+  "sablefix.damage.stale_notice": "§6[SableFix] §c%s sublevel files are stale read-only (last fix interrupted) — run /sablefix unmask so Sable can save again"
 }

@@ -32,14 +32,45 @@ public final class SableWriteMask {
     /** fix 全流程守卫：运行中拒绝再次进入（对抗审计#1：双 fix 交错 = MASKED 竞态 + halt 杀 daemon 线程 = 残留只读） */
     private static final java.util.concurrent.atomic.AtomicBoolean FIX_RUNNING = new java.util.concurrent.atomic.AtomicBoolean();
 
-    /** 尝试进入 fix 流程；false=已在运行中（调用方拒绝）。finally 里 release()。 */
+    /** 平台探测（二轮审计#6）：Linux 无 dos:readonly—— UnsupportedOperationException 若逃逸会让
+     *  fix 第一步就整体失败。启动时探测一次缓存：false=跳过屏蔽步骤（fix 降级为纯修复模式）。 */
+    private static volatile Boolean dosSupported;
+
+    /** dos:readonly 是否可用（惰性探测，结果缓存）。 */
+    static boolean dosSupported(Path sample) {
+        Boolean s = dosSupported;
+        if (s != null) return s;
+        try {
+            if (sample == null || !Files.exists(sample)) {
+                // 没样本文件：临时造一个探测
+                Path probe = Files.createTempFile("sfx-dos-probe", ".tmp");
+                try {
+                    Files.setAttribute(probe, "dos:readonly", true);
+                    Files.setAttribute(probe, "dos:readonly", false);
+                    s = true;
+                } finally { Files.deleteIfExists(probe); }
+            } else {
+                Files.getAttribute(sample, "dos:readonly");
+                s = true;
+            }
+        } catch (UnsupportedOperationException e) {
+            s = false;
+        } catch (Exception e) {
+            s = false;   // IO 故障按不支持处理（fix 降级，宁可不屏蔽也不炸）
+        }
+        dosSupported = s;
+        return s;
+    }
+
+    /** 尝试进入 fix 流程；false=已在运行中（调用方拒绝）。 */
     public static boolean tryBeginFix() { return FIX_RUNNING.compareAndSet(false, true); }
     public static void endFix() { FIX_RUNNING.set(false); }
 
     /** /sablefix unmask：残留只读兜底解锁（对抗审计#8——fix 被外部强杀后管理员的救命命令）。
      *  不依赖 MASKED 清单（进程被杀清单就丢了）：直接扫 sublevels 恢复一切只读的 slvlr/slvls。
-     *  返回解锁文件数。 */
-    public static int unmaskAll(net.minecraft.server.MinecraftServer server) {
+     *  二轮审计#2：整体 synchronized——与主线程终局 unmask / SCAN_POOL 的 withWritable 互斥，
+     *  消除全扫 vs 回锁竞态导致的残留只读。返回解锁文件数。 */
+    public static synchronized int unmaskAll(net.minecraft.server.MinecraftServer server) {
         int n = unmaskAll();   // 清单内（若同进程）先恢复
         try {
             Path sublevels = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
@@ -51,7 +82,7 @@ public final class SableWriteMask {
                                 Files.setAttribute(p, "dos:readonly", false);
                                 n++;
                             }
-                        } catch (IOException ignored) {}
+                        } catch (IOException | UnsupportedOperationException ignored) {}
                     }
                 }
             }
@@ -61,10 +92,20 @@ public final class SableWriteMask {
 
     /** 屏蔽全部：sublevels 下所有 .slvlr/.slvls 设只读（原本只读的不记——unmask 不能动用户的）。
      *  对抗审计#1：不做 MASKED.clear()——重复 fix 的交错下 clear 会扔掉上一轮清单导致文件残留只读。
-     *  增量添加；已只读（无论谁设的）不入清单。幂等。 */
-    public static synchronized void maskAll(net.minecraft.server.MinecraftServer server) {
+     *  增量添加；已只读（无论谁设的）不入清单。幂等。
+     *  二轮审计#6：Linux 无 dos 支持 → 返回 false，fix 降级为纯修复模式（跳过屏蔽，修复照跑）。 */
+    public static synchronized boolean maskAll(net.minecraft.server.MinecraftServer server) {
         Path sublevels = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
-        if (!Files.isDirectory(sublevels)) return;
+        if (!Files.isDirectory(sublevels)) return true;
+        // 探测：用目录里第一个文件做样本
+        Path sample = null;
+        try (DirectoryStream<Path> peek = Files.newDirectoryStream(sublevels, "*.{slvlr,slvls}")) {
+            for (Path p : peek) { sample = p; break; }
+        } catch (IOException ignored) {}
+        if (!dosSupported(sample)) {
+            SableFixMod.LOGGER.warn("mask: 本平台无 dos:readonly（Linux/macOS）——跳过写回屏蔽，fix 降级为纯修复模式");
+            return false;
+        }
         try (DirectoryStream<Path> ds = Files.newDirectoryStream(sublevels, "*.{slvlr,slvls}")) {
             for (Path p : ds) {
                 try {
@@ -80,6 +121,7 @@ public final class SableWriteMask {
             SableFixMod.LOGGER.warn("mask: 扫描 sublevels 失败（无屏蔽）", e);
         }
         SableFixMod.LOGGER.warn("mask: {} 个子层级文件已只读（Sable 写回被屏蔽）", MASKED.size());
+        return true;
     }
 
     /** 恢复全部：mask 期间设只读的文件恢复可写（清单驱动）。halt 前必调。返回恢复数。 */

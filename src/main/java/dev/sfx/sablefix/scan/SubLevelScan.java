@@ -88,7 +88,8 @@ public final class SubLevelScan {
                     + "Sable 将无法保存子层级进度！用 /sablefix unmask 解除";
             dev.sfx.sablefix.log.ModLog.error(msg);
             SableFixMod.LOGGER.error("{}", msg);
-            DamageRegistry.register(DamageRegistry.Kind.SUBLVL_DEAD, "<stale read-only files>", n);
+            // 二轮审计#3：独立 kind——进服提示说"用 unmask 解除"而非误导性的"用 repair 修复"
+            DamageRegistry.register(DamageRegistry.Kind.STALE_READONLY, "<stale read-only files>", n);
         }
         return n;
     }

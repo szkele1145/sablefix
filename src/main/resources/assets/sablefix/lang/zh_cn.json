@@ -172,11 +172,12 @@
   "sablefix.panel.backups_more": "…另有 %s 份更早的备份",
   "sablefix.panel.repair_note_live": "⚠ 服务器运行中：修复可能被 Sable 的周期写回覆盖。要永久生效请停服后执行 repair",
   "sablefix.cmd.fix_started": "§6[SableFix] §e一键修复启动：屏蔽 Sable 写回 → 修复 → 踢人重启…",
-  "sablefix.cmd.fix_done": "§6[SableFix] §a修复完成：%s 个文件成功 / %s 失败 / 清零 %s 槽位。服务器即将停止——请确认面板自动重启或手动拉起",
+  "sablefix.cmd.fix_done": "§6[SableFix] §a修复完成：%s 个文件成功 / %s 失败 / 清零 %s 槽位（写回屏蔽：%s）。服务器即将停止——请确认面板自动重启或手动拉起",
   "sablefix.cmd.fix_kick": "SableFix 触发一键修复，服务器立刻重启，请稍后重连",
   "sablefix.cmd.fix_fail": "§6[SableFix] §c修复失败：%s（未重启，写回屏蔽已解除）",
   "sablefix.cmd.help_fix": "一键修复：屏蔽 Sable 写回 → repair-all → 踢全体 → 自动重启（运行时修复不再被覆盖）",
   "sablefix.cmd.fix_busy": "§6[SableFix] §c已有 fix 在运行中——拒绝重复执行（防止竞态）",
   "sablefix.cmd.unmask_done": "§6[SableFix] §a已解锁 %s 个残留只读的子层级文件（Sable 写回恢复）",
-  "sablefix.cmd.help_unmask": "兜底解锁：清除 fix 中断后残留的只读标记（Sable 无法保存子层级时执行）"
+  "sablefix.cmd.help_unmask": "兜底解锁：清除 fix 中断后残留的只读标记（Sable 无法保存子层级时执行）",
+  "sablefix.damage.stale_notice": "§6[SableFix] §c检测到 %s 个子层级文件残留只读（上次 fix 被中断）——用 /sablefix unmask 解除，Sable 才能保存进度"
 }

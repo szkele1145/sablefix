@@ -32,7 +32,9 @@ public final class DamageRegistry {
         /** force-load 票据异常堆积 */
         TICKETS_STUCK,
         /** 保存管线卡住（SaveObserver：区块保存 future 长时间未完成） */
-        SAVE_STALLED
+        SAVE_STALLED,
+        /** fix 中断残留只读（二轮审计#3：正解是 /sablefix unmask 不是 repair——独立 kind 避免误导提示） */
+        STALE_READONLY
     }
 
     public static final class Entry {

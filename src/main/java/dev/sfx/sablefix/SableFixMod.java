@@ -67,12 +67,18 @@ public class SableFixMod {
         // 可用性审计#1+#6：OP 收逐条详细（文件名+数量+修复指引）；
         // 普通玩家只发一条汇总（原实现逐条重发同一句安慰文案=N 条刷屏，且 player_notice
         // 的 lang key 无 %s 占位——传 2 参被静默丢弃，双重问题一并修）
+        // 二轮审计#3：STALE_READONLY 独立文案——指引 unmask（而非误导的 repair）
         boolean admin = sp.hasPermissions(2);
         var pending = DamageRegistry.onPlayerJoin(sp.getUUID());
         if (admin) {
             for (var e : pending) {
-                sp.sendSystemMessage(net.minecraft.network.chat.Component.translatable(
-                        "sablefix.damage.admin_notice", e.file, e.count));
+                if ("STALE_READONLY".equals(e.kind)) {
+                    sp.sendSystemMessage(net.minecraft.network.chat.Component.translatable(
+                            "sablefix.damage.stale_notice", e.count));
+                } else {
+                    sp.sendSystemMessage(net.minecraft.network.chat.Component.translatable(
+                            "sablefix.damage.admin_notice", e.file, e.count));
+                }
             }
         } else if (!pending.isEmpty()) {
             sp.sendSystemMessage(net.minecraft.network.chat.Component.translatable(
