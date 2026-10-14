@@ -101,7 +101,7 @@ public class SfxPanelScreen extends Screen {
                 "16:34:23.602 [WARN] r.-4.7.slvlr: 3 dead pointers (74 live)",
                 "16:34:23.711 [INFO] tickets: 19 force-load tickets, gzip/NBT OK (707 B)",
                 "16:51:08.332 [INFO] panel request: Dev@[/127.0.0.1]");
-        return new NetHandler.PanelData(files, 19, uuids, 41, 0, 22_320_000L, dims, logs, false, 0, java.util.List.of());
+        return new NetHandler.PanelData(files, 19, uuids, 41, 0, 22_320_000L, dims, logs, false, -1, java.util.List.of());
     }
 
     static NetHandler.DiagRes demoDiag() {
@@ -514,8 +514,9 @@ public class SfxPanelScreen extends Screen {
         long dead = statDeadTotal;
         int by = ty + th + 10;
         // 卡死提示条（新功能）：发生过卡死抓栈时在总览页优先展示——用户第一眼看到"最近发生过什么"
-        if (data.lastStallAtMs() > 0) {
-            long agoMs = Math.max(0, System.currentTimeMillis() - data.lastStallAtMs());   // 回拨防护
+        // 三轮审计#5：lastStallAgoMs 服务端算好（-1=未发生）——不再用客户端时钟对服务器 epoch
+        if (data.lastStallAgoMs() >= 0) {
+            long agoMs = data.lastStallAgoMs();
             String ago = agoMs < 60_000 ? (agoMs / 1000) + "s"
                     : agoMs < 3_600_000 ? (agoMs / 60_000) + "min"
                     : (agoMs / 3_600_000) + "h";
@@ -604,7 +605,7 @@ public class SfxPanelScreen extends Screen {
                 if (byy + 12 > ly + cardH - 4 || shown2 >= 8) break;
                 dtr(g, b.name(), x + 28, byy, w - 170, withA(TEXT, a), false);
                 dtr(g, fmtSize(b.size()), x + w - 128, byy, 44, withA(DIM, a), false);
-                dtr(g, fmtDur(System.currentTimeMillis() - b.atMs()), x + w - 74, byy, 62, withA(FAINT, a), false);
+                dtr(g, fmtDur(b.ageMs()), x + w - 74, byy, 62, withA(FAINT, a), false);
                 byy += 13;
                 shown2++;
             }

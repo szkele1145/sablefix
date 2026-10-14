@@ -219,11 +219,14 @@ public final class ServerHandlers {
             }
             for (var e : logSnap) logLines.add(e.time() + " [" + e.level() + "] " + e.msg());
 
+            // 三轮审计#4/#5：服务端算好相对时长下发（lastStallAgoMs），绕 NTP 失步的客户端时钟
+            long stallAt = ThreadWatchdog.lastStallAtMs();
+            long stallAgo = stallAt == 0 ? -1 : Math.max(0, System.currentTimeMillis() - stallAt);
             NetHandler.PanelData data = new NetHandler.PanelData(
                     files, ticketCount, uuids,
                     ThreadWatchdog.lastTickGapMs(), ThreadWatchdog.dumpCount(), uptime, dims,
                     logLines, cached == COLD_SCAN || cached == SCAN_FAILED,
-                    ThreadWatchdog.lastStallAtMs(),
+                    stallAgo,
                     cached.backups());
             ctx.reply(data);
         } catch (Exception e) {
@@ -261,18 +264,21 @@ public final class ServerHandlers {
             Path world = worldDir(server);
             Path backupDir = world.resolve("backups").resolve("sablefix");
             if (!Files.isDirectory(backupDir)) return List.of();
+            long now = System.currentTimeMillis();
             List<NetHandler.PanelData.BackupRow> out = new ArrayList<>();
             try (DirectoryStream<Path> ds = Files.newDirectoryStream(backupDir, "*.bak")) {
                 for (Path p : ds) {
                     try {
+                        long at = Files.getLastModifiedTime(p).toMillis();
+                        // 三轮审计#4：ageMs 服务端算好（客户端时钟 NTP 失步不再显示错乱）
                         out.add(new NetHandler.PanelData.BackupRow(
                                 p.getFileName().toString(),
                                 Files.size(p),
-                                Files.getLastModifiedTime(p).toMillis()));
+                                Math.max(0, now - at)));
                     } catch (IOException ignored) {}
                 }
             }
-            out.sort((a, b) -> Long.compare(b.atMs(), a.atMs()));   // 新→旧
+            out.sort((a, b) -> Long.compare(a.ageMs(), b.ageMs()));   // 新→旧（age 小=新）
             return out.size() > 64 ? out.subList(0, 64) : out;
         } catch (Exception e) {
             return List.of();

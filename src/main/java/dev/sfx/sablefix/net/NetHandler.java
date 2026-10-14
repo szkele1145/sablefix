@@ -18,8 +18,10 @@ public final class NetHandler {
      *  v1: 1.0.0–1.3.0（panel/diag + repair + purge，期间变更未 bump 是历史教训）
      *  v2: 1.3.1（DiagRes.errorKey 客户端本地化 + 发送侧截断语义确立）
      *  v3: 1.4.0（负 VarInt clamp、日志截断方向修正——接收语义变化）
-     *  v4: 1.5.0（PanelData 增 lastStallAtMs + backups 字段——载荷格式变更） */
-    public static final String PROTOCOL_VERSION = "4";
+     *  v4: 1.5.0（PanelData 增 lastStallAtMs + backups 字段——载荷格式变更）
+     *  v5: 1.5.2（lastStallAtMs → lastStallAgoMs、BackupRow.atMs → ageMs：服务端算好相对时长，
+     *      绕 NTP 失步面板服的时钟偏差——载荷语义变更） */
+    public static final String PROTOCOL_VERSION = "5";
 
     public static void register(net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent event) {
         PayloadRegistrar reg = event.registrar(PROTOCOL_VERSION);
@@ -57,21 +59,23 @@ public final class NetHandler {
     }
 
     /** S2C：面板数据。文件行 + 票据 + 看门狗状态 + 维度统计 + 运行日志。scanning=true 表示后台扫描未完成，客户端稍后重试。
-     *  lastStallAtMs：最近一次卡死抓栈的 epoch millis（0=未发生过）——面板提示条"上次卡死 N 分钟前"。
-     *  backups：backups/sablefix 下的备份清单（备份管理页用；最多 64 条，超出只保留最新——防帧超限）。 */
+     *  lastStallAgoMs：距最近一次卡死抓栈的毫秒数（服务端算好——三轮审计#4/#5：客户端时钟对服务器
+     *  epoch 的偏移在 NTP 失步的面板服上显示错乱；改下发相对时长）。-1=未发生过。
+     *  backups：backups/sablefix 下的备份清单（备份管理页用；最多 64 条，超出只保留最新——防帧超限）。
+     *  BackupRow.ageMs 同理由服务端算好。 */
     public record PanelData(
             List<FileRow> files,
             int ticketCount, List<String> ticketUuids,
             long lastTickGapMs, int dumpCount, long uptimeMs,
             List<DimRow> dims,
             List<String> logLines, boolean scanning,
-            long lastStallAtMs,
+            long lastStallAgoMs,
             List<BackupRow> backups) implements CustomPacketPayload {
 
         public record FileRow(String name, boolean slvlr, long size, int live, int dead) {}
         public record DimRow(String name, int entities, int blockEntities, int chunks) {}
-        /** 备份行：文件名（含时间戳后缀）+ 字节数 + 修改时间（epoch millis） */
-        public record BackupRow(String name, long size, long atMs) {}
+        /** 备份行：文件名（含时间戳后缀）+ 字节数 + 距今毫秒（服务端算好，绕时钟偏差） */
+        public record BackupRow(String name, long size, long ageMs) {}
 
         public static final Type<PanelData> TYPE = new Type<>(id("panel_data"));
         public static final StreamCodec<FriendlyByteBuf, PanelData> CODEC = StreamCodec.of(NetHandler::writePanel, NetHandler::readPanel);
@@ -178,13 +182,13 @@ public final class NetHandler {
         f.writeVarInt(logs.size());
         for (String line : logs) f.writeUtf(line, 384);
         f.writeBoolean(p.scanning());
-        f.writeVarLong(p.lastStallAtMs);
+        f.writeVarLong(p.lastStallAgoMs);
         // 备份清单：最多 64 条（buildScan 侧已截断），防帧超限
         List<PanelData.BackupRow> backups = p.backups.size() > 64
                 ? p.backups.subList(0, 64) : p.backups;
         f.writeVarInt(backups.size());
         for (PanelData.BackupRow b : backups) {
-            f.writeUtf(b.name(), 192); f.writeVarLong(b.size()); f.writeVarLong(b.atMs());
+            f.writeUtf(b.name(), 192); f.writeVarLong(b.size()); f.writeVarLong(b.ageMs());
         }
     }
 
@@ -211,13 +215,13 @@ public final class NetHandler {
         List<String> logs = new ArrayList<>(Math.min(ln, 200));
         for (int i = 0; i < ln; i++) logs.add(f.readUtf(512));
         boolean scanning = f.readBoolean();
-        long stallAt = f.readVarLong();
+        long stallAgo = f.readVarLong();
         int bn = clampCount(f.readVarInt(), 64);
         List<PanelData.BackupRow> backups = new ArrayList<>(bn);
         for (int i = 0; i < bn; i++) {
             backups.add(new PanelData.BackupRow(f.readUtf(192), f.readVarLong(), f.readVarLong()));
         }
-        return new PanelData(files, tc, uuids, gap, dumps, up, dims, logs, scanning, stallAt, backups);
+        return new PanelData(files, tc, uuids, gap, dumps, up, dims, logs, scanning, stallAgo, backups);
     }
 
     /** VarInt 长度防御：负值按 0 处理（恶意/损坏包不踢客户端） */
