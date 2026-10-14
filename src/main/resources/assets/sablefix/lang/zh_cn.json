@@ -116,8 +116,8 @@
   "sablefix.cmd.repair_nothing": "%s 无需修复（没有死指针/坏条目）",
   "sablefix.cmd.repair_plan": "修复计划 %s：将清零 %s 个死槽：",
   "sablefix.cmd.repair_dry_hint": "以上是 dry 预览，未写入任何数据。确认无误后执行 /sablefix repair %s apply",
-  "sablefix.cmd.repair_done": "✓ 已清零 %s 个槽位。原文件已备份到 %s",
-  "sablefix.cmd.repair_restart_hint": "下次启动加载该子层级时生效。若文件被占用请先停服再试。",
+  "sablefix.cmd.repair_done": "已修复 %s 个死槽（备份：%s）。若服务器正在运行，Sable 可能在下次保存时写回旧索引——要永久生效请停服后重新执行本命令",
+  "sablefix.cmd.repair_restart_hint": "⚠ 永久生效需在停服状态下执行修复（Sable 运行时会周期写回内存索引，覆盖运行时的修复）",
   "sablefix.cmd.repair_locked": "%s 被占用（服务器运行中 Sable 持有句柄）。请停服后再执行 apply。",
   "sablefix.cmd.repair_fail": "修复 %s 失败: %s",
   "sablefix.panel.repair_btn": "修复",
@@ -160,7 +160,7 @@
   "sablefix.cmd.diag_dim": "  维度: %s",
   "sablefix.cmd.diag_entities": "  实体: %s",
   "sablefix.cmd.diag_be": "  方块实体: %s",
-  "sablefix.damage.admin_notice": "§6[SableFix] §c检测到未处置损伤：%s（%s 处）§7——用 /sablefix repair 修复，详见控制台",
+  "sablefix.damage.admin_notice": "§6[SableFix] §c检测到未处置损伤：%s（%s 处）§7——停服后用 /sablefix repair 修复（运行时修复会被 Sable 覆盖），详见控制台",
   "sablefix.damage.player_notice": "§6[SableFix] §e服务器存档存在已知损伤，正在由管理员处理，不影响游玩",
   "sablefix.cmd.help_diag": "区块诊断：加载状态/实体/方块实体（与 GUI 同源）",
   "sablefix.cmd.report_done": "✅ 诊断报告已生成：%s",
@@ -169,5 +169,6 @@
   "sablefix.cmd.help_report": "一键生成诊断报告（损伤+日志+线程栈打包成单文件，方便发群求助）",
   "sablefix.panel.stall_recent": "⚠ 最近卡死：%s 前（累计抓栈 %s 次）——详见「死锁监视」页",
   "sablefix.panel.backups_title": "自动备份（修复/清理前自动创建，位于 world/backups/sablefix/）",
-  "sablefix.panel.backups_more": "…另有 %s 份更早的备份"
+  "sablefix.panel.backups_more": "…另有 %s 份更早的备份",
+  "sablefix.panel.repair_note_live": "⚠ 服务器运行中：修复可能被 Sable 的周期写回覆盖。要永久生效请停服后执行 repair"
 }

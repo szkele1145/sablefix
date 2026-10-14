@@ -306,7 +306,10 @@ public final class ServerHandlers {
                 String preview = plan.slots().stream().map(String::valueOf)
                         .limit(20).collect(java.util.stream.Collectors.joining(", "))
                         + (plan.slots().size() > 20 ? " …" : "");
-                ctx.reply(new NetHandler.RepairRes(true, false, req.file(), plan.slots().size(), preview, "", "", ""));
+                // 运行时警示随 dry 预览一起回（Sable 会周期写回内存索引——运行时修复会被覆盖）
+                ctx.reply(new NetHandler.RepairRes(true, false, req.file(), plan.slots().size(),
+                        net.minecraft.network.chat.Component.translatable("sablefix.panel.repair_note_live").getString()
+                                + " | " + preview, "", "", ""));
                 return;
             }
             SubLevelRepair.RepairResult res = SubLevelRepair.apply(plan);
