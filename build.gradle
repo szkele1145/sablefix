@@ -6,8 +6,14 @@ plugins {
 version = '1.5.0'
 group = 'dev.sfx'
 
+// 发布 jar 命名规范：模组名-模组版本号-游戏版本号-加载器.jar
+// 如 sablefix-1.5.0-1.21.1-neoforge.jar（对齐社区惯例：create-1.21.1-6.0.10、sable-neoforge-1.21.1-2.0.6）
+// 注：base.archivesName 会被 gradle 追加 "-${version}" 导致版本重复，故用 jar 任务重命名。
 base {
     archivesName = 'sablefix'
+}
+tasks.named('jar') {
+    archiveFileName = "sablefix-${project.version}-${project.minecraft_version}-neoforge.jar"
 }
 
 java {

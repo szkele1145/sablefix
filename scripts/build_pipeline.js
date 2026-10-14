@@ -36,8 +36,12 @@ console.log('[3/4] 产物回拷…');
 fs.mkdirSync(`${PROJ}/build/libs`, { recursive: true });
 const libs = fs.readdirSync(`${TMP}/build/libs`).filter(f => f.endsWith('.jar'));
 for (const f of libs) {
+  // 临时副本的旧产物（含上轮错误命名的 -1.5.0-1.21.1-neoforge-1.5.0.jar）不回拷——只认规范名
+  if (!/^sablefix-\d+\.\d+\.\d+-1\.21\.1-neoforge\.jar$/.test(f)) continue;
   fs.copyFileSync(`${TMP}/build/libs/${f}`, `${PROJ}/build/libs/${f}`);
   console.log(`  => ${f}`);
 }
+fs.readdirSync(`${PROJ}/build/libs`).filter(f => f.endsWith('.jar'))
+  .forEach(f => { if (!/^sablefix-\d+\.\d+\.\d+-1\.21\.1-neoforge\.jar$/.test(f)) fs.unlinkSync(`${PROJ}/build/libs/${f}`); });
 
 console.log('[4/4] 完成');

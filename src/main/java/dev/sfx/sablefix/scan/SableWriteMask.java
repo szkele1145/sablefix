@@ -29,10 +29,17 @@ public final class SableWriteMask {
 
     private static final List<Path> MASKED = new ArrayList<>();
 
+    /** fix 全流程守卫：运行中拒绝再次进入（对抗审计#1：双 fix 交错 = MASKED 竞态 + halt 杀 daemon 线程 = 残留只读） */
+    private static final java.util.concurrent.atomic.AtomicBoolean FIX_RUNNING = new java.util.concurrent.atomic.AtomicBoolean();
+
+    /** 尝试进入 fix 流程；false=已在运行中（调用方拒绝）。finally 里 release()。 */
+    public static boolean tryBeginFix() { return FIX_RUNNING.compareAndSet(false, true); }
+    public static void endFix() { FIX_RUNNING.set(false); }
+
     /** 屏蔽全部：sublevels 下所有 .slvlr/.slvls 设只读（原本只读的不记——unmask 不能动用户的）。
-     *  幂等可重入；个别失败记 warn 继续。 */
+     *  对抗审计#1：不做 MASKED.clear()——重复 fix 的交错下 clear 会扔掉上一轮清单导致文件残留只读。
+     *  增量添加；已只读（无论谁设的）不入清单。幂等。 */
     public static synchronized void maskAll(net.minecraft.server.MinecraftServer server) {
-        MASKED.clear();
         Path sublevels = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
         if (!Files.isDirectory(sublevels)) return;
         try (DirectoryStream<Path> ds = Files.newDirectoryStream(sublevels, "*.{slvlr,slvls}")) {

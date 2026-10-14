@@ -80,6 +80,11 @@ public final class SfxCommands {
      */
     private static int fix(CommandSourceStack src) {
         MinecraftServer server = src.getServer();
+        // 对抗审计#1：重复执行守卫——双 fix 交错会导致 MASKED 竞态 + halt 杀 daemon 线程 = 残留只读
+        if (!dev.sfx.sablefix.scan.SableWriteMask.tryBeginFix()) {
+            src.sendFailure(tr("sablefix.cmd.fix_busy"));
+            return 0;
+        }
         src.sendSuccess(() -> tr("sablefix.cmd.fix_started"), false);
         dev.sfx.sablefix.net.ServerHandlers.runAsync(() -> {
             try {
