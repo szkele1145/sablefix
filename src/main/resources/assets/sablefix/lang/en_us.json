@@ -170,5 +170,10 @@
   "sablefix.panel.stall_recent": "⚠ Recent stall: %s ago (%s dumps total) — see the Watch tab",
   "sablefix.panel.backups_title": "Auto backups (created before every repair/purge, in world/backups/sablefix/)",
   "sablefix.panel.backups_more": "…%s more older backups",
-  "sablefix.panel.repair_note_live": "⚠ Server running: repairs may be overwritten by Sable's periodic write-back. Stop the server to make repairs permanent"
+  "sablefix.panel.repair_note_live": "⚠ Server running: repairs may be overwritten by Sable's periodic write-back. Stop the server to make repairs permanent",
+  "sablefix.cmd.fix_started": "§6[SableFix] §eOne-click fix started: mask Sable write-back → repair → kick & restart…",
+  "sablefix.cmd.fix_done": "§6[SableFix] §aFix complete: %s files OK / %s failed / %s slots cleared. Server restarting now",
+  "sablefix.cmd.fix_kick": "SableFix one-click repair triggered — server restarting immediately, reconnect shortly",
+  "sablefix.cmd.fix_fail": "§6[SableFix] §cFix failed: %s (no restart; write-back mask released)",
+  "sablefix.cmd.help_fix": "one-click fix: mask Sable write-back → repair-all → kick everyone → auto restart (runtime repairs no longer overwritten)"
 }

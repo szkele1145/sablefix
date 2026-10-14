@@ -170,5 +170,10 @@
   "sablefix.panel.stall_recent": "⚠ 最近卡死：%s 前（累计抓栈 %s 次）——详见「死锁监视」页",
   "sablefix.panel.backups_title": "自动备份（修复/清理前自动创建，位于 world/backups/sablefix/）",
   "sablefix.panel.backups_more": "…另有 %s 份更早的备份",
-  "sablefix.panel.repair_note_live": "⚠ 服务器运行中：修复可能被 Sable 的周期写回覆盖。要永久生效请停服后执行 repair"
+  "sablefix.panel.repair_note_live": "⚠ 服务器运行中：修复可能被 Sable 的周期写回覆盖。要永久生效请停服后执行 repair",
+  "sablefix.cmd.fix_started": "§6[SableFix] §e一键修复启动：屏蔽 Sable 写回 → 修复 → 踢人重启…",
+  "sablefix.cmd.fix_done": "§6[SableFix] §a修复完成：%s 个文件成功 / %s 失败 / 清零 %s 槽位。服务器即将重启",
+  "sablefix.cmd.fix_kick": "SableFix 触发一键修复，服务器立刻重启，请稍后重连",
+  "sablefix.cmd.fix_fail": "§6[SableFix] §c修复失败：%s（未重启，写回屏蔽已解除）",
+  "sablefix.cmd.help_fix": "一键修复：屏蔽 Sable 写回 → repair-all → 踢全体 → 自动重启（运行时修复不再被覆盖）"
 }

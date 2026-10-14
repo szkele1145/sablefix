@@ -14,8 +14,10 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 
+import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -62,7 +64,68 @@ public final class SfxCommands {
                 .then(Commands.literal("diag")
                         .then(Commands.argument("pos", net.minecraft.commands.arguments.coordinates.BlockPosArgument.blockPos())
                                 .executes(c -> diag(c.getSource(), net.minecraft.commands.arguments.coordinates.BlockPosArgument.getLoadedBlockPos(c, "pos")))))
-                .then(Commands.literal("report").executes(c -> report(c.getSource()))));
+                .then(Commands.literal("report").executes(c -> report(c.getSource())))
+                .then(Commands.literal("fix").executes(c -> fix(c.getSource()))));
+    }
+
+    /**
+     * 一键全自动修复（用户设计）：屏蔽 Sable 写回 → repair-all → 踢全体玩家 → 自动重启。
+     * 运行时修复被 Sable 周期写回覆盖的问题（"修了重启也还有"的根治方案）。
+     * 编排全部异步（scan+plan 不卡主线程），踢人/重启回主线程执行。
+     *
+     * 屏蔽方案（务实折中，逆向出 Sable 类名前的保底）：
+     * 问题文件全部只读（挡 Sable 周期写回——其写回失败被自身 catch 吞掉不崩服）；
+     * 修复每个文件的写入瞬间由 SableWriteMask 单文件解锁/回锁（毫秒窗口，Sable 写回是分钟级周期，碰撞概率可忽略）；
+     * 修完 → 踢人 → halt 重启（重启前 unmask 保证 Sable 新进程能写）。
+     */
+    private static int fix(CommandSourceStack src) {
+        MinecraftServer server = src.getServer();
+        src.sendSuccess(() -> tr("sablefix.cmd.fix_started"), false);
+        dev.sfx.sablefix.net.ServerHandlers.runAsync(() -> {
+            try {
+                // 1. 屏蔽：sublevels 全部只读（Sable 周期写回撞上只读会走自身异常处理，不影响服运行）
+                dev.sfx.sablefix.scan.SableWriteMask.maskAll(server);
+                // 2. 全量修复（逐文件：解锁 → 备份+清零 → 回锁）
+                Path dir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
+                SubLevelScan.Report r = SubLevelScan.scan(dir);
+                List<SubLevelRepair.RepairPlan> plans = new ArrayList<>();
+                for (SubLevelScan.SlvlIssue i : r.slvlr()) {
+                    try { plans.add(SubLevelRepair.plan(i.file())); } catch (Exception ignored) {}
+                }
+                for (SubLevelScan.SlvlsIssue i : r.slvls()) {
+                    try { plans.add(SubLevelRepair.plan(i.file())); } catch (Exception ignored) {}
+                }
+                plans.removeIf(SubLevelRepair.RepairPlan::isEmpty);
+                int ok = 0, fail = 0, cleared = 0;
+                for (SubLevelRepair.RepairPlan p : plans) {
+                    try {
+                        SubLevelRepair.RepairResult res = dev.sfx.sablefix.scan.SableWriteMask.withWritable(p.file(),
+                                () -> { try { return SubLevelRepair.apply(p); } catch (IOException e) { throw new RuntimeException(e); } });
+                        ok++; cleared += res.cleared();
+                    } catch (Exception e) {
+                        fail++;
+                        SableFixMod.LOGGER.warn("fix: {} failed: {}", p.file().getFileName(), e.getMessage());
+                    }
+                }
+                final int fOk = ok, fFail = fail, fCleared = cleared;
+                SableFixMod.LOGGER.warn("fix: {} ok, {} failed, {} slots cleared", ok, fail, cleared);
+                server.execute(() -> src.sendSuccess(() -> tr("sablefix.cmd.fix_done", fOk, fFail, fCleared), false));
+                // 3+4. 回主线程：踢全体 + 自动重启（重启前 unmask——halt 后由 finally 兜底也行，
+                //      但主线程先 unmask 更稳：玩家被踢时文件已恢复可写）
+                server.execute(() -> {
+                    for (ServerPlayer p : server.getPlayerList().getPlayers()) {
+                        p.connection.disconnect(tr("sablefix.cmd.fix_kick"));
+                    }
+                    dev.sfx.sablefix.scan.SableWriteMask.unmaskAll();
+                    server.halt(false);
+                });
+            } catch (Exception e) {
+                SableFixMod.LOGGER.error("fix 失败（不重启，解除屏蔽）", e);
+                dev.sfx.sablefix.scan.SableWriteMask.unmaskAll();
+                server.execute(() -> src.sendFailure(tr("sablefix.cmd.fix_fail", e.getMessage())));
+            }
+        });
+        return 1;
     }
     /**
      * 批量修复：dry = 汇总所有问题文件的死槽计划（不写盘）；
@@ -224,6 +287,7 @@ public final class SfxCommands {
         src.sendSuccess(() -> Component.literal("§7/sablefix tickets §f— ").append(tr("sablefix.cmd.help_tickets")), false);
         src.sendSuccess(() -> Component.literal("§7/sablefix dump §f— ").append(tr("sablefix.cmd.help_dump")), false);
         src.sendSuccess(() -> Component.literal("§7/sablefix report §f— ").append(tr("sablefix.cmd.help_report")), false);
+        src.sendSuccess(() -> Component.literal("§7/sablefix fix §f— ").append(tr("sablefix.cmd.help_fix")), false);
         src.sendSuccess(() -> Component.literal("§7/sablefix repair <file> dry|apply §f— ").append(tr("sablefix.cmd.help_repair")), false);
         src.sendSuccess(() -> Component.literal("§7/sablefix repair-all dry|apply §f— ").append(tr("sablefix.cmd.help_repair_all")), false);
         src.sendSuccess(() -> Component.literal("§7/sablefix tickets-purge dry|apply §f— ").append(tr("sablefix.cmd.help_purge")), false);
