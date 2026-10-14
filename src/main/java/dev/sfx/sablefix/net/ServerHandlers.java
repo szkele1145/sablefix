@@ -303,13 +303,15 @@ public final class ServerHandlers {
                 return;
             }
             if (!req.apply()) {
+                // 三轮审计#2：preview 超 256 时 writeUtf(256) 抛异常断连；且警示文案按服务器
+                // locale 渲染违反 errorKey 客户端本地化原则。改为：note 走 errKey（客户端本地化），
+                // preview 纯槽位列表服务端硬截 240 保安全。
                 String preview = plan.slots().stream().map(String::valueOf)
                         .limit(20).collect(java.util.stream.Collectors.joining(", "))
                         + (plan.slots().size() > 20 ? " …" : "");
-                // 运行时警示随 dry 预览一起回（Sable 会周期写回内存索引——运行时修复会被覆盖）
+                if (preview.length() > 240) preview = preview.substring(0, 240) + "…";
                 ctx.reply(new NetHandler.RepairRes(true, false, req.file(), plan.slots().size(),
-                        net.minecraft.network.chat.Component.translatable("sablefix.panel.repair_note_live").getString()
-                                + " | " + preview, "", "", ""));
+                        preview, "", "sablefix.panel.repair_note_live", ""));
                 return;
             }
             SubLevelRepair.RepairResult res = SubLevelRepair.apply(plan);

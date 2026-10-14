@@ -630,10 +630,12 @@ public class SfxPanelScreen extends Screen {
             return;
         }
         if (!r.applied()) {
-            // dry：显示计划，进入确认态
+            // dry：显示计划 + 运行时警示（三轮审计#2：警示改走 errKey 客户端本地化），进入确认态
             repairDryFile = r.file();
             repairConfirmFile = r.file();
-            repairMsg = L("sablefix.panel.repair_plan_gui", r.slots(), r.preview());
+            String note = r.errKey() != null && !r.errKey().isEmpty() ? L(r.errKey()) : "";
+            String plan = L("sablefix.panel.repair_plan_gui", r.slots(), r.preview());
+            repairMsg = note.isEmpty() ? plan : (note + "\n" + plan);
             repairMsgOk = true;
         } else {
             repairConfirmFile = null;

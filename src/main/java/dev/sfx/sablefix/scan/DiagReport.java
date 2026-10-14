@@ -60,20 +60,31 @@ public final class DiagReport {
         sb.append('\n');
 
         // 最新一份线程 dump 摘要（前 80 行——死锁证据的关键面：线程名+栈顶）
+        // 三轮审计#1：dump 正被 watchdog 补抓写入时 readAllLines 可能读到半写内容甚至抛 IO——
+        // 单独 try-catch（失败写"读取失败"继续生成报告，不让整个 report 命令失败）
         Path latest = latestDump();
         if (latest != null) {
             sb.append("--- 最新线程栈 (").append(latest.getFileName()).append("，前 80 行) ---\n");
-            List<String> lines = Files.readAllLines(latest, StandardCharsets.UTF_8);
-            for (int i = 0; i < Math.min(80, lines.size()); i++) {
-                sb.append("  ").append(lines.get(i)).append('\n');
+            try {
+                List<String> lines = Files.readAllLines(latest, StandardCharsets.UTF_8);
+                for (int i = 0; i < Math.min(80, lines.size()); i++) {
+                    sb.append("  ").append(lines.get(i)).append('\n');
+                }
+                if (lines.size() > 80) sb.append("  …（共 ").append(lines.size()).append(" 行，完整文件见同目录）\n");
+            } catch (Exception e) {
+                sb.append("  [读取失败（文件可能正被写入）: ").append(e.getMessage()).append("]\n");
             }
-            if (lines.size() > 80) sb.append("  …（共 ").append(lines.size()).append(" 行，完整文件见同目录）\n");
         } else {
             sb.append("--- 线程栈：无（服务器未发生过卡死抓栈）---\n");
         }
 
-        // 写入 logs/sablefix/
-        Path dir = Path.of(System.getProperty("user.dir"), "logs", "sablefix");
+        // 写入 logs/sablefix/（三轮审计#1：user.dir 解析兜底——面板服工作目录可能异常）
+        Path dir;
+        try {
+            dir = Path.of(System.getProperty("user.dir"), "logs", "sablefix");
+        } catch (Exception e) {
+            dir = Path.of("logs", "sablefix");
+        }
         Files.createDirectories(dir);
         Path out = dir.resolve("report-" + LocalDateTime.now()
                 .format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")) + ".txt");

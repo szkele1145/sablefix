@@ -114,7 +114,15 @@ public final class SaveObserver {
         var saveFuture = holder.getSaveSyncFuture();
         String key = dimName(level) + "@" + holder.getPos().x + "," + holder.getPos().z;
         if (saveFuture == null || saveFuture.isDone()) {
-            PENDING.remove(key);
+            // 三轮审计#3：已登记的卡顿恢复时同步清登记——原实现只清追踪，
+            // DamageRegistry 的 SAVE_STALLED 无人清 → periodicWarn 每 5 分钟永久误报
+            // 且持久化跨重启（登记的 file 字段就是 key+毫秒数）
+            var t = PENDING.remove(key);
+            if (t != null && t.registered()) {
+                dev.sfx.sablefix.scan.DamageRegistry.clear(
+                        dev.sfx.sablefix.scan.DamageRegistry.Kind.SAVE_STALLED,
+                        key + " (save pending " + ((now - t.sinceNanos()) / 1_000_000L) + "ms)");
+            }
             return;
         }
         PENDING.compute(key, (k, t) -> {
