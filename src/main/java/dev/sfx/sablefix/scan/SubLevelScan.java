@@ -36,7 +36,11 @@ public final class SubLevelScan {
     public static void startupScan(MinecraftServer server) {
         try {
             dev.sfx.sablefix.log.ModLog.info("开始子层级体检…");
-            Report r = scan(server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels"));
+            Path sublevels = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
+            // 对抗审计#8（最坏路径闭环）：fix 中途外部强杀 → 文件残留只读 → Sable 写回静默失败零告警。
+            // 启动时检测残留只读：ERROR 级（fail-loud）+ 登记损伤，管理员进面板/看控制台一眼可见。
+            int staleRo = warnStaleReadOnly(sublevels);
+            Report r = scan(sublevels);
             long dead = r.slvlr().stream().mapToLong(SlvlIssue::deadPointers).sum();
             long bad = r.slvls().stream().mapToLong(SlvlsIssue::badEntries).sum();
             if (dead == 0 && bad == 0) {
@@ -64,6 +68,29 @@ public final class SubLevelScan {
             // 体检本身失败（目录不可读/IO 故障）：登记一个整卷级损伤，提醒不再静默
             DamageRegistry.register(DamageRegistry.Kind.SUBLVL_DEAD, "<sublevels scan failed>", 1);
         }
+    }
+
+    /** 残留只读检测（对抗审计#8）：fix 被 external kill 打断时 unmaskAll 没跑——文件残留只读会让
+     *  Sable 写回静默失败、进度全丢。启动时发现即 ERROR fail-loud + 登记损伤。
+     *  返回残留只读文件数。 */
+    private static int warnStaleReadOnly(Path sublevels) {
+        if (!Files.isDirectory(sublevels)) return 0;
+        int n = 0;
+        try (var ds = Files.newDirectoryStream(sublevels, "*.{slvlr,slvls}")) {
+            for (Path p : ds) {
+                try {
+                    if ((Boolean) Files.getAttribute(p, "dos:readonly")) n++;
+                } catch (Exception ignored) {}
+            }
+        } catch (Exception ignored) {}
+        if (n > 0) {
+            String msg = "检测到 " + n + " 个子层级文件残留只读（上次 /sablefix fix 被中断）——"
+                    + "Sable 将无法保存子层级进度！用 /sablefix unmask 解除";
+            dev.sfx.sablefix.log.ModLog.error(msg);
+            SableFixMod.LOGGER.error("{}", msg);
+            DamageRegistry.register(DamageRegistry.Kind.SUBLVL_DEAD, "<stale read-only files>", n);
+        }
+        return n;
     }
 
     public static Report scan(Path sublevelsDir) throws IOException {

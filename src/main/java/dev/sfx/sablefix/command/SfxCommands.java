@@ -65,7 +65,17 @@ public final class SfxCommands {
                         .then(Commands.argument("pos", net.minecraft.commands.arguments.coordinates.BlockPosArgument.blockPos())
                                 .executes(c -> diag(c.getSource(), net.minecraft.commands.arguments.coordinates.BlockPosArgument.getLoadedBlockPos(c, "pos")))))
                 .then(Commands.literal("report").executes(c -> report(c.getSource())))
-                .then(Commands.literal("fix").executes(c -> fix(c.getSource()))));
+                .then(Commands.literal("fix").executes(c -> fix(c.getSource())))
+                .then(Commands.literal("unmask").executes(c -> unmask(c.getSource()))));
+    }
+
+    /** /sablefix unmask：残留只读兜底（fix 被外部强杀后的救命命令）——扫 sublevels 恢复一切只读。 */
+    private static int unmask(CommandSourceStack src) {
+        MinecraftServer server = src.getServer();
+        int n = dev.sfx.sablefix.scan.SableWriteMask.unmaskAll(server);
+        final int fN = n;
+        src.sendSuccess(() -> tr("sablefix.cmd.unmask_done", fN), false);
+        return 1;
     }
 
     /**
@@ -115,19 +125,20 @@ public final class SfxCommands {
                 final int fOk = ok, fFail = fail, fCleared = cleared;
                 SableFixMod.LOGGER.warn("fix: {} ok, {} failed, {} slots cleared", ok, fail, cleared);
                 server.execute(() -> src.sendSuccess(() -> tr("sablefix.cmd.fix_done", fOk, fFail, fCleared), false));
-                // 3+4. 回主线程：踢全体 + 自动重启（重启前 unmask——halt 后由 finally 兜底也行，
-                //      但主线程先 unmask 更稳：玩家被踢时文件已恢复可写）
+                // 3+4. 回主线程：踢全体 + 停服（unmask 全扫版——清单+目录双保险）
                 server.execute(() -> {
                     for (ServerPlayer p : server.getPlayerList().getPlayers()) {
                         p.connection.disconnect(tr("sablefix.cmd.fix_kick"));
                     }
-                    dev.sfx.sablefix.scan.SableWriteMask.unmaskAll();
+                    dev.sfx.sablefix.scan.SableWriteMask.unmaskAll(server);
                     server.halt(false);
                 });
             } catch (Exception e) {
                 SableFixMod.LOGGER.error("fix 失败（不重启，解除屏蔽）", e);
-                dev.sfx.sablefix.scan.SableWriteMask.unmaskAll();
+                dev.sfx.sablefix.scan.SableWriteMask.unmaskAll(server);
                 server.execute(() -> src.sendFailure(tr("sablefix.cmd.fix_fail", e.getMessage())));
+            } finally {
+                dev.sfx.sablefix.scan.SableWriteMask.endFix();
             }
         });
         return 1;
@@ -293,6 +304,7 @@ public final class SfxCommands {
         src.sendSuccess(() -> Component.literal("§7/sablefix dump §f— ").append(tr("sablefix.cmd.help_dump")), false);
         src.sendSuccess(() -> Component.literal("§7/sablefix report §f— ").append(tr("sablefix.cmd.help_report")), false);
         src.sendSuccess(() -> Component.literal("§7/sablefix fix §f— ").append(tr("sablefix.cmd.help_fix")), false);
+        src.sendSuccess(() -> Component.literal("§7/sablefix unmask §f— ").append(tr("sablefix.cmd.help_unmask")), false);
         src.sendSuccess(() -> Component.literal("§7/sablefix repair <file> dry|apply §f— ").append(tr("sablefix.cmd.help_repair")), false);
         src.sendSuccess(() -> Component.literal("§7/sablefix repair-all dry|apply §f— ").append(tr("sablefix.cmd.help_repair_all")), false);
         src.sendSuccess(() -> Component.literal("§7/sablefix tickets-purge dry|apply §f— ").append(tr("sablefix.cmd.help_purge")), false);

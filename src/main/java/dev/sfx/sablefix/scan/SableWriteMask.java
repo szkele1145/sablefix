@@ -36,6 +36,29 @@ public final class SableWriteMask {
     public static boolean tryBeginFix() { return FIX_RUNNING.compareAndSet(false, true); }
     public static void endFix() { FIX_RUNNING.set(false); }
 
+    /** /sablefix unmask：残留只读兜底解锁（对抗审计#8——fix 被外部强杀后管理员的救命命令）。
+     *  不依赖 MASKED 清单（进程被杀清单就丢了）：直接扫 sublevels 恢复一切只读的 slvlr/slvls。
+     *  返回解锁文件数。 */
+    public static int unmaskAll(net.minecraft.server.MinecraftServer server) {
+        int n = unmaskAll();   // 清单内（若同进程）先恢复
+        try {
+            Path sublevels = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
+            if (Files.isDirectory(sublevels)) {
+                try (DirectoryStream<Path> ds = Files.newDirectoryStream(sublevels, "*.{slvlr,slvls}")) {
+                    for (Path p : ds) {
+                        try {
+                            if ((Boolean) Files.getAttribute(p, "dos:readonly")) {
+                                Files.setAttribute(p, "dos:readonly", false);
+                                n++;
+                            }
+                        } catch (IOException ignored) {}
+                    }
+                }
+            }
+        } catch (Exception ignored) {}
+        return n;
+    }
+
     /** 屏蔽全部：sublevels 下所有 .slvlr/.slvls 设只读（原本只读的不记——unmask 不能动用户的）。
      *  对抗审计#1：不做 MASKED.clear()——重复 fix 的交错下 clear 会扔掉上一轮清单导致文件残留只读。
      *  增量添加；已只读（无论谁设的）不入清单。幂等。 */
@@ -59,17 +82,20 @@ public final class SableWriteMask {
         SableFixMod.LOGGER.warn("mask: {} 个子层级文件已只读（Sable 写回被屏蔽）", MASKED.size());
     }
 
-    /** 恢复全部：mask 期间设只读的文件恢复可写。halt 前必调。 */
-    public static synchronized void unmaskAll() {
+    /** 恢复全部：mask 期间设只读的文件恢复可写（清单驱动）。halt 前必调。返回恢复数。 */
+    public static synchronized int unmaskAll() {
+        int n = 0;
         for (Path p : MASKED) {
             try {
                 Files.setAttribute(p, "dos:readonly", false);
+                n++;
             } catch (IOException e) {
                 SableFixMod.LOGGER.error("unmask: {} 恢复可写失败——请手动取消只读！Sable 将无法保存子层级！", p.getFileName());
             }
         }
-        SableFixMod.LOGGER.warn("unmask: {} 个文件已恢复可写", MASKED.size());
+        SableFixMod.LOGGER.warn("unmask: {} 个文件已恢复可写", n);
         MASKED.clear();
+        return n;
     }
 
     /** 修复写入的毫秒窗口：单文件临时解锁 → 执行写入 → 回锁。
