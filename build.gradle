@@ -32,15 +32,16 @@ neoForge {
     runs {
         client {
             client()
-            // demo 开关：-Dsfx.demo=true（gradle 命令行）或环境变量 SFX_DEMO=1 均可触发；
-            // tab/窗口尺寸同理（sfx.demo.tab / SFX_W / SFX_H）
-            def demo = System.getProperty('sfx.demo') != null || System.getenv('SFX_DEMO') != null
+            // demo 开关（四轮审计#4：改名空间防第三方劫持；仅 dev 环境生效）：
+            // -Dsablefix.demo=true（gradle 命令行）或环境变量 SABLEFIX_DEMO=1；
+            // tab/窗口尺寸同理（sablefix.demo.tab / SFX_W / SFX_H）
+            def demo = System.getProperty('sablefix.demo') != null || System.getenv('SABLEFIX_DEMO') != null
             if (demo) {
-                systemProperty 'sfx.demo', 'true'
-                def tab = System.getProperty('sfx.demo.tab') ?: System.getenv('SFX_DEMO_TAB')
-                if (tab != null) systemProperty 'sfx.demo.tab', tab
-                def sc = System.getProperty('sfx.scale') ?: System.getenv('SFX_SCALE')
-                if (sc != null) systemProperty 'sfx.scale', sc
+                systemProperty 'sablefix.demo', 'true'
+                def tab = System.getProperty('sablefix.demo.tab') ?: System.getenv('SABLEFIX_DEMO_TAB')
+                if (tab != null) systemProperty 'sablefix.demo.tab', tab
+                def sc = System.getProperty('sablefix.scale') ?: System.getenv('SFX_SCALE')
+                if (sc != null) systemProperty 'sablefix.scale', sc
                 def w = System.getProperty('sfx.w') ?: System.getenv('SFX_W')
                 def h = System.getProperty('sfx.h') ?: System.getenv('SFX_H')
                 if (w != null) {

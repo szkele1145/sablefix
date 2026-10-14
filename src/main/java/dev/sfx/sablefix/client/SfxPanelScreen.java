@@ -125,7 +125,7 @@ public class SfxPanelScreen extends Screen {
         if (ClientSetup.isDemo()) {
             if (data == null) data = demoData();
             if (diagRes == null) diagRes = demoDiag();
-            tab = Integer.getInteger("sfx.demo.tab", 0);
+            tab = Integer.getInteger("sablefix.demo.tab", 0);
         } else if (data == null) {
             request();
         }
@@ -164,6 +164,9 @@ public class SfxPanelScreen extends Screen {
         boolean v = tab == 3;
         xBox.setVisible(v); zBox.setVisible(v);
         xBox.setEditable(v); zBox.setEditable(v);
+        // 四轮审计#1：vanilla setEditable 只改 flag 不清焦点——诊断页点过输入框后切页，
+        // isFocused 残留 true → 数字键 1-7 在所有页静默失灵（被聚焦守卫拦截）。
+        if (!v) { xBox.setFocused(false); zBox.setFocused(false); }
     }
 
     private void switchTab(int t) {
@@ -396,7 +399,7 @@ public class SfxPanelScreen extends Screen {
     private long demoLast;
 
     private void demoAutoCycle() {
-        if (!Boolean.getBoolean("sfx.demo") || data == null) return;
+        if (!ClientSetup.isDemo() || data == null) return;   // 四轮审计#4：统一走 isDemo（dev 闸+新命名空间）
         long now = Util.getMillis();
         if (demoNext < 0) { demoNext = tab; demoLast = now; return; }
         if (now - demoLast < 4000) return;
@@ -631,10 +634,19 @@ public class SfxPanelScreen extends Screen {
             return;
         }
         if (!r.applied()) {
-            // dry：显示计划 + 运行时警示（三轮审计#2：警示改走 errKey 客户端本地化），进入确认态
+            // dry：显示计划 + 运行时警示（三轮审计#2：警示改走 errKey 客户端本地化），进入确认态。
+            // 四轮审计#5：slots==0（空 plan / 无可修）不进确认态——原来会挂死在"确认清零"按钮
+            String note = r.errKey() != null && !r.errKey().isEmpty() ? L(r.errKey()) : "";
+            if (r.slots() == 0) {
+                repairConfirmFile = null;
+                repairDryFile = null;
+                String what = note.isEmpty() ? L("sablefix.cmd.repair_nothing", r.file()) : note;
+                repairMsg = what;
+                repairMsgOk = true;
+                return;
+            }
             repairDryFile = r.file();
             repairConfirmFile = r.file();
-            String note = r.errKey() != null && !r.errKey().isEmpty() ? L(r.errKey()) : "";
             String plan = L("sablefix.panel.repair_plan_gui", r.slots(), r.preview());
             repairMsg = note.isEmpty() ? plan : (note + "\n" + plan);
             repairMsgOk = true;

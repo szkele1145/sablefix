@@ -47,9 +47,15 @@ public final class ClientSetup {
     private static int demoPhase;
     private static int demoTicks;
 
-    /** 演示模式开关：系统属性 sfx.demo 或环境变量 SFX_DEMO。 */
+    /** 演示模式开关（四轮审计#4：改名空间 sablefix.demo + 加 dev 环境闸——
+     *  原来 "sfx.demo" 太通用，任何第三方 mod/启动器定义同名属性即可劫持：
+     *  强改 guiScale、展示假数据、28 秒后直接 Minecraft.stop() 退出玩家游戏）。
+     *  生产环境（非 dev）永远不进 demo——截图需要时在 dev 环境跑。 */
     static boolean isDemo() {
-        return Boolean.getBoolean("sfx.demo") || "1".equals(System.getenv("SFX_DEMO"));
+        if (!net.neoforged.fml.loading.FMLLoader.isProduction()) {
+            return Boolean.getBoolean("sablefix.demo") || "1".equals(System.getenv("SABLEFIX_DEMO"));
+        }
+        return false;
     }
 
     @SubscribeEvent
