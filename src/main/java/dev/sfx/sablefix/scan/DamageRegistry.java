@@ -13,6 +13,8 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * 损伤登记簿：把体检发现的问题持久化成 <存档>/data/sablefix_damage.json，
@@ -55,6 +57,12 @@ public final class DamageRegistry {
     private static final Map<String, Entry> DAMAGE = new LinkedHashMap<>();
     /** 每玩家已提示过的 damageId（不持久化：重启后每玩家会再被提示一次——损伤仍在时这是合理行为） */
     private static final Map<UUID, Map<String, Boolean>> NOTIFIED = new ConcurrentHashMap<>();
+    /** 写盘单线程：register/clear 内只拍快照并提交，永不在 synchronized 块内做同步 IO（审计#3 闭环）。 */
+    private static final ExecutorService WRITE_POOL = Executors.newSingleThreadExecutor(r -> {
+        Thread t = new Thread(r, "sablefix-damage-writer");
+        t.setDaemon(true);
+        return t;
+    });
     private static long lastPeriodicWarnMs;
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
@@ -80,13 +88,13 @@ public final class DamageRegistry {
         boolean changed = isNew || e.count != count;
         e.count = count;
         e.lastSeenMs = now;
-        if (changed) saveLater(new LinkedHashMap<>(DAMAGE));
+        if (changed) WRITE_POOL.execute(() -> saveLater(new LinkedHashMap<>(DAMAGE)));
         return isNew;
     }
 
     /** 问题消失（如玩家已用 repair 修复）时移除，下次 WARN 不再出现。写盘同样移到锁外（审计#3）。 */
     public static synchronized void clear(Kind kind, String file) {
-        if (DAMAGE.remove(kind.name() + ":" + file) != null) saveLater(new LinkedHashMap<>(DAMAGE));
+        if (DAMAGE.remove(kind.name() + ":" + file) != null) WRITE_POOL.execute(() -> saveLater(new LinkedHashMap<>(DAMAGE)));
     }
 
     /** 锚定存储路径 + 载入已有登记（重启后损伤清单不丢）。storeDir = <世界>/data（由调用方传入，Registry 不依赖 MC 类型）。 */
