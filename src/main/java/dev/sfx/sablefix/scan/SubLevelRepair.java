@@ -54,9 +54,10 @@ public final class SubLevelRepair {
             // dry 与 apply 一致走 repair_fail 提示路径（不再静默空计划）。
             throw new IOException("header truncated (<4096B), file not repairable: " + f.getFileName());
         }
-        ByteBuffer head = readHead(f);
         List<Integer> slots = new ArrayList<>();
+        // 七轮审计#5：head 与段读合并到同一个 channel（原先两次 open，600 文件 = 1200 次）
         try (FileChannel ch = FileChannel.open(f, StandardOpenOption.READ)) {
+            ByteBuffer head = readHead(ch);
             for (int i = 0; i < 1024; i++) {
                 long ptr = Integer.toUnsignedLong(head.getInt(i * 4));
                 if (ptr == 0) continue;
@@ -76,7 +77,11 @@ public final class SubLevelRepair {
             // 回归审计：与 planSlvlr 同因——截断文件 check 记坏但 plan 静默空 → 提示死循环
             throw new IOException("header truncated (<4096B), file not repairable: " + f.getFileName());
         }
-        ByteBuffer head = readHead(f);
+        // 七轮审计#5：readHead 现在需要 channel（与 planSlvlr 合并 open 的同一改法）
+        ByteBuffer head;
+        try (FileChannel ch = FileChannel.open(f, StandardOpenOption.READ)) {
+            head = readHead(ch);
+        }
         List<Integer> slots = new ArrayList<>();
         for (int i = 0; i < 1024; i++) {
             int off = ((head.get(i * 4) & 0xFF) << 16) | ((head.get(i * 4 + 1) & 0xFF) << 8) | (head.get(i * 4 + 2) & 0xFF);
@@ -131,11 +136,11 @@ public final class SubLevelRepair {
         return new RepairResult(plan.file(), backup, cleared);
     }
 
-    private static ByteBuffer readHead(Path f) throws IOException {
+    /** 读取 4KB 文件头。七轮审计#5：改为在调用方已打开的 channel 上读（合并 open）。
+     *  读完后 position 停在 4096，后续绝对读（ch.read(buf, pos)）不受影响。 */
+    private static ByteBuffer readHead(FileChannel ch) throws IOException {
         ByteBuffer buf = ByteBuffer.allocate(4096).order(ByteOrder.BIG_ENDIAN);
-        try (FileChannel ch = FileChannel.open(f, StandardOpenOption.READ)) {
-            while (buf.hasRemaining() && ch.read(buf) > 0) {}
-        }
+        while (buf.hasRemaining() && ch.read(buf) > 0) {}
         return buf;
     }
 }

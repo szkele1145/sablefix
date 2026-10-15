@@ -19,9 +19,16 @@ import java.util.concurrent.Callable;
  * （catch 级兜底，不崩服，内存索引照常服务玩家）。修复每个文件的写入瞬间用
  * withWritable() 单文件解锁/回锁——毫秒窗口 vs Sable 的分钟级周期，碰撞概率可忽略。
  *
- * 生命周期：maskAll()（fix 开始）→ withWritable()（逐文件修复）→ unmaskAll()（踢人后、halt 前）。
- * 任何异常路径都会 unmaskAll——若进程被强杀没来得及恢复，文件残留只读时 Sable 会
- * 在日志里明确报"无法写子层级"，管理员一眼可见（fail-loud 优于静默覆盖）。
+ * 生命周期：maskAll()（fix 开始）→ withWritable()（逐文件修复）→ 只读**贯穿 shutdown**
+ * → ServerStoppedEvent 解锁（Sable 垂死写回已成定局）→ 新进程启动兜底 unmaskAll(server)。
+ *
+ * P0 修复（1.5.4）：原先在 halt 前 unmask，实测 /sablefix fix 后面板自动重启仍报同样损坏。
+ * 根因：Sable 进程被 halt(false) 触发的停服存档仍持有内存中陈旧的子层级索引，
+ * 一旦文件恢复可写就会把这些陈旧索引写回磁盘，覆盖刚清零的槽位。保持只读穿过 shutdown
+ * 是唯一能挡住这次写回的时机（Sable 写失败走自身 catch 吞掉，不崩服）。
+ *
+ * 任何异常路径都会解锁——若进程被强杀没来得及恢复，文件残留只读时 Sable 会在日志里
+ * 明确报"无法写子层级"，管理员一眼可见（fail-loud 优于静默覆盖），下次开服自动兜底解锁。
  */
 public final class SableWriteMask {
 
@@ -97,21 +104,22 @@ public final class SableWriteMask {
     public static synchronized boolean maskAll(net.minecraft.server.MinecraftServer server) {
         Path sublevels = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
         if (!Files.isDirectory(sublevels)) return true;
-        // 探测：用目录里第一个文件做样本
-        Path sample = null;
-        try (DirectoryStream<Path> peek = Files.newDirectoryStream(sublevels, "*.{slvlr,slvls}")) {
-            for (Path p : peek) { sample = p; break; }
-        } catch (IOException ignored) {}
-        if (!dosSupported(sample)) {
-            SableFixMod.LOGGER.warn("mask: 本平台无 dos:readonly（Linux/macOS）——跳过写回屏蔽，fix 降级为纯修复模式");
-            return false;
-        }
+        // 七轮审计#2：原先前置开一次目录流取"样本文件"给 dosSupported，再开第二次流做屏蔽——两次 open。
+        // 合并为一次：首个文件兼作探测样本（必须用目标卷上的真实文件探测，不能用系统 temp——
+        // sublevels 可能位于 FAT32/网络盘，与 temp 卷的支持性不同），同流继续完成屏蔽。
+        int masked = 0;
         try (DirectoryStream<Path> ds = Files.newDirectoryStream(sublevels, "*.{slvlr,slvls}")) {
             for (Path p : ds) {
+                if (!dosSupported(p)) {
+                    SableFixMod.LOGGER.warn("mask: 本平台无 dos:readonly（Linux/macOS）——跳过写回屏蔽，fix 降级为纯修复模式");
+                    // 探测失败即中止：此时尚未改动任何文件（dosSupported 先于 setAttribute）
+                    return false;
+                }
                 try {
                     if (!(Boolean) Files.getAttribute(p, "dos:readonly")) {
                         Files.setAttribute(p, "dos:readonly", true);
                         MASKED.add(p);
+                        masked++;
                     }
                 } catch (IOException e) {
                     SableFixMod.LOGGER.warn("mask: {} 设置只读失败（继续）", p.getFileName());
@@ -120,11 +128,13 @@ public final class SableWriteMask {
         } catch (IOException e) {
             SableFixMod.LOGGER.warn("mask: 扫描 sublevels 失败（无屏蔽）", e);
         }
-        SableFixMod.LOGGER.warn("mask: {} 个子层级文件已只读（Sable 写回被屏蔽）", MASKED.size());
+        // 空目录：dosSupported 从未被调用 → 没有文件需要屏蔽，视为成功
+        SableFixMod.LOGGER.warn("mask: {} 个子层级文件已只读（Sable 写回被屏蔽）", masked);
         return true;
     }
 
-    /** 恢复全部：mask 期间设只读的文件恢复可写（清单驱动）。halt 前必调。返回恢复数。 */
+    /** 恢复全部：mask 期间设只读的文件恢复可写（清单驱动）。P0 修复后不再在 halt 前调用——
+     *  改由 ServerStoppedEvent（存档落盘后）解锁，新进程启动时另有目录扫描兜底。返回恢复数。 */
     public static synchronized int unmaskAll() {
         int n = 0;
         for (Path p : MASKED) {

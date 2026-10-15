@@ -76,7 +76,8 @@ public final class SfxCommands {
         // 五审#5：闭环——unmask 修完清登记（否则 STALE_READONLY 每 5 分钟 WARN 永远报、跨重启持久化）
         if (n >= 0) {
             dev.sfx.sablefix.scan.DamageRegistry.clear(
-                    dev.sfx.sablefix.scan.DamageRegistry.Kind.STALE_READONLY, "<stale read-only files>");
+                    dev.sfx.sablefix.scan.DamageRegistry.Kind.STALE_READONLY,
+                    dev.sfx.sablefix.scan.DamageRegistry.STALE_READONLY_FILE);
         }
         final int fN = n;
         src.sendSuccess(() -> tr("sablefix.cmd.unmask_done", fN), false);
@@ -91,7 +92,10 @@ public final class SfxCommands {
      * 屏蔽方案（务实折中，逆向出 Sable 类名前的保底）：
      * 问题文件全部只读（挡 Sable 周期写回——其写回失败被自身 catch 吞掉不崩服）；
      * 修复每个文件的写入瞬间由 SableWriteMask 单文件解锁/回锁（毫秒窗口，Sable 写回是分钟级周期，碰撞概率可忽略）；
-     * 修完 → 踢人 → halt 重启（重启前 unmask 保证 Sable 新进程能写）。
+     * 修完 → 踢人 → halt 重启。**刻意不在 halt 前 unmask**（P0 修复 1.5.4）：
+     * halt(false) 的停服存档阶段，Sable 仍持有内存中陈旧的子层级索引，文件一旦恢复可写
+     * 就会被它写回、覆盖刚清零的槽位——这正是"fix 后自动重启仍报损坏"的根因。
+     * 只读改由 ServerStoppedEvent（存档已全部落盘）解锁，并由新进程启动时兜底扫描解锁。
      */
     private static int fix(CommandSourceStack src) {
         MinecraftServer server = src.getServer();
@@ -140,7 +144,9 @@ public final class SfxCommands {
                     for (ServerPlayer p : server.getPlayerList().getPlayers()) {
                         p.connection.disconnect(tr("sablefix.cmd.fix_kick"));
                     }
-                    dev.sfx.sablefix.scan.SableWriteMask.unmaskAll(server);
+                    // P0 修复（1.5.4）：此处**不再** unmaskAll！保持只读穿过 shutdown，
+                    // 挡住 Sable 垂死写回覆盖刚清零的槽位；解锁交给 ServerStoppedEvent
+                    // （存档落盘后）+ 新进程启动时的目录兜底解锁。
                     dev.sfx.sablefix.scan.SableWriteMask.endFix();
                     server.halt(false);
                 });

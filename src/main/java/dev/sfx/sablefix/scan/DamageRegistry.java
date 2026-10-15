@@ -26,6 +26,12 @@ public final class DamageRegistry {
 
     private DamageRegistry() {}
 
+    /** 残留只读条目的登记名（唯一权威定义，八轮审计#1）。
+     *  条目键 = kind.name() + ":" + file，注册方（SubLevelScan.warnStaleReadOnly）与清除方
+     *  （SubLevelScan / SableWriteMask 兜底 / SableFixMod 启动解锁 / /sablefix unmask）
+     *  必须逐字一致，否则 clear 静默失配 → 已解锁仍每 5 分钟 WARN 且跨重启持久化。 */
+    public static final String STALE_READONLY_FILE = "<stale read-only files>";
+
     public enum Kind {
         /** .slvlr/.slvls 死指针/坏条目 */
         SUBLVL_DEAD,
