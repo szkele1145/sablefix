@@ -4,10 +4,11 @@ license = "MIT"
 
 [[mods]]
 modId = "sablefix"
-version = "1.5.4"
+version = "1.5.5"
 displayName = "Sable Fix Core"
 description = """
 Sable 存档自愈与诊断核心（诊断优先，修复为辅）。
+v1.5.5：审计修复——面板扫描失败冷却标记不再 Long.MIN_VALUE 溢出（面板卡“一直扫描中”根因）；ticketCount 读取加 clamp 防护（损坏包不再踢客户端）；关于页版本号统一到构建版本源，与顶栏同步；en 文本联系方式改为 GitHub Issues。继续沿用 v1.5.4 P0 只读关服保护与启动兜底解锁。
 卡死 20 秒自动抓全线程栈（原版 60 秒杀服前抢下现场）；
 启动时体检 .slvlr/.slvls 指针与 force-load 票据；
 支持子层级修复 / 批量修复 / 票据清理（自动备份，只读体检）；

@@ -204,7 +204,7 @@ public final class NetHandler {
         for (int i = 0; i < n; i++) {
             files.add(new PanelData.FileRow(f.readUtf(128), f.readBoolean(), f.readVarLong(), f.readVarInt(), f.readVarInt()));
         }
-        int tc = f.readVarInt();
+        int tc = clampCount(f.readVarInt(), 65535);
         int un = clampCount(f.readVarInt(), MAX_UUIDS);
         List<String> uuids = new ArrayList<>(Math.min(un, 256));
         for (int i = 0; i < un; i++) uuids.add(f.readUtf(64));

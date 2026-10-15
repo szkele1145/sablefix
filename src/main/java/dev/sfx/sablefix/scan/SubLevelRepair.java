@@ -95,7 +95,7 @@ public final class SubLevelRepair {
 
     // ---------- 执行 ----------
 
-    /** 备份 + 清零计划中的槽位。备份目录：backups/sablefix/（工作目录相对，与 logs/ 同级）。 */
+    /** 备份 + 清零计划中的槽位。备份目录：…/world/backups/sablefix/（锚定存档，不依赖 CWD）。 */
     public static RepairResult apply(RepairPlan plan) throws IOException {
         if (plan.slvlr() && plan.size() < 4096) throw new IOException("header truncated, not repairable");
         if (!plan.slvlr() && plan.size() < 4096) throw new IOException("header truncated, not repairable");

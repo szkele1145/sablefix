@@ -46,7 +46,10 @@ public final class ServerHandlers {
             });
     /** 失败冷却：首扫/重扫抛异常后，30s 内不再重试（防止坏存档导致无限失败循环），给用户真实错误而非永久 scanning */
     private static final long SCAN_FAILURE_COOLDOWN_MS = 30_000L;
-    private static volatile long lastScanFailureAt = Long.MIN_VALUE;
+    // 九轮审计#P0：初始值 0L 表示“从未失败，冷却已过期”。若用 Long.MIN_VALUE，
+    // System.currentTimeMillis() - Long.MIN_VALUE 会 long 溢出为负，使 coolingDown
+    // 永远为 true → 面板永远返回 SCAN_FAILED/COLD_SCAN 空报告，永不重试真扫描。
+    private static volatile long lastScanFailureAt = 0L;
 
     /** 通用异步任务入口：命令的磁盘扫描走 SCAN_POOL（同池与启动体检/面板扫描天然互斥串行）。 */
     public static void runAsync(Runnable task) {
@@ -122,11 +125,11 @@ public final class ServerHandlers {
 
     /** 首扫未完成时回给面板的占位报告（客户端据 scanning 标志显示"扫描中"并自动重试）。 */
     private static final CachedScan COLD_SCAN = new CachedScan(
-            new SubLevelScan.Report(List.of(), List.of(), 0, 0), List.of(), 0, Long.MIN_VALUE, List.of());
+            new SubLevelScan.Report(List.of(), List.of(), 0, 0), List.of(), 0, 0L, List.of());
 
     /** 首扫失败冷却期的占位（ticketCount=-2；客户端据 scanning=false + 空 files 显示冷却提示，服务器日志有真实错误）。 */
     private static final CachedScan SCAN_FAILED = new CachedScan(
-            new SubLevelScan.Report(List.of(), List.of(), 0, 0), List.of(), -2, Long.MIN_VALUE, List.of());
+            new SubLevelScan.Report(List.of(), List.of(), 0, 0), List.of(), -2, 0L, List.of());
 
     public static void onPanelReq(IPayloadContext ctx) {
         if (!(ctx.player() instanceof ServerPlayer player)) return;

@@ -1127,7 +1127,7 @@ public class SfxPanelScreen extends Screen {
         g.enableScissor(x + 1, innerTop, x + w - 1, innerBottom);
 
         int ty = innerTop - (int) aboutScroll;
-        dtr(g, L("sablefix.panel.about_ver"), x + 14, ty, w - 28, withA(TEXT, a), true);
+        dtr(g, L("sablefix.panel.about_ver") + " — v" + SableFixMod.VERSION, x + 14, ty, w - 28, withA(TEXT, a), true);
         ty += 13;
 
         ty = aboutSection(g, x, w, ty, "sablefix.panel.about_what", a,

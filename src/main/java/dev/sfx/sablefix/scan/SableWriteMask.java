@@ -43,23 +43,24 @@ public final class SableWriteMask {
      *  fix 第一步就整体失败。启动时探测一次缓存：false=跳过屏蔽步骤（fix 降级为纯修复模式）。 */
     private static volatile Boolean dosSupported;
 
-    /** dos:readonly 是否可用（惰性探测，结果缓存）。 */
+    /** dos:readonly 是否可用（惰性探测，结果缓存）。
+     *
+     *  八轮审计#2：探测样本必须是**目标卷上的真实文件**。原实现在无样本时
+     *  `Files.createTempFile()` 造探测文件——temp 在系统盘，而 sublevels 可能位于
+     *  FAT32/网络盘/挂载点，卷的 dos: 支持性并不相同（exFAT 无 ACL、SMB 重定向、
+     *  只读挂载……）。跨卷探测会得到"支持"的假结论 → maskAll 以为屏蔽成功，
+     *  实际 setAttribute 逐个失败 → 报告 masked 却毫无防护，退化成本次 P0 的温床。
+     *  现在无真实样本时直接返回 false（无文件可屏蔽，降级纯修复模式无副作用），
+     *  且**不写缓存**——否则先到的假结果会永久污染后续真实样本的探测。 */
     static boolean dosSupported(Path sample) {
         Boolean s = dosSupported;
         if (s != null) return s;
+        if (sample == null || !Files.exists(sample)) {
+            return false;   // 无真实样本：不探测、不缓存（绝不用系统 temp 跨卷猜测）
+        }
         try {
-            if (sample == null || !Files.exists(sample)) {
-                // 没样本文件：临时造一个探测
-                Path probe = Files.createTempFile("sfx-dos-probe", ".tmp");
-                try {
-                    Files.setAttribute(probe, "dos:readonly", true);
-                    Files.setAttribute(probe, "dos:readonly", false);
-                    s = true;
-                } finally { Files.deleteIfExists(probe); }
-            } else {
-                Files.getAttribute(sample, "dos:readonly");
-                s = true;
-            }
+            Files.getAttribute(sample, "dos:readonly");
+            s = true;
         } catch (UnsupportedOperationException e) {
             s = false;
         } catch (Exception e) {
@@ -110,6 +111,10 @@ public final class SableWriteMask {
         int masked = 0;
         try (DirectoryStream<Path> ds = Files.newDirectoryStream(sublevels, "*.{slvlr,slvls}")) {
             for (Path p : ds) {
+                // 八轮审计#2 配套：探测样本必须存在。首个文件若在开流后被 Sable 删除/改名，
+                // dosSupported 返回的是"无样本"而非"不支持"——必须跳过该文件继续，
+                // 否则会误报平台不支持并中途放弃，留下半屏蔽状态（已屏蔽的不再被 unmask 清单外的路径覆盖）。
+                if (!Files.exists(p)) continue;
                 if (!dosSupported(p)) {
                     SableFixMod.LOGGER.warn("mask: 本平台无 dos:readonly（Linux/macOS）——跳过写回屏蔽，fix 降级为纯修复模式");
                     // 探测失败即中止：此时尚未改动任何文件（dosSupported 先于 setAttribute）
@@ -129,7 +134,7 @@ public final class SableWriteMask {
             SableFixMod.LOGGER.warn("mask: 扫描 sublevels 失败（无屏蔽）", e);
         }
         // 空目录：dosSupported 从未被调用 → 没有文件需要屏蔽，视为成功
-        SableFixMod.LOGGER.warn("mask: {} 个子层级文件已只读（Sable 写回被屏蔽）", masked);
+        SableFixMod.LOGGER.info("mask: {} 个子层级文件已只读（Sable 写回被屏蔽）", masked);
         return true;
     }
 

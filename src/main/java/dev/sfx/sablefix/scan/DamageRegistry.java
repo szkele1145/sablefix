@@ -142,7 +142,7 @@ public final class DamageRegistry {
         return new java.util.ArrayList<>(DAMAGE.values());
     }
 
-    /** 锁外异步写盘（审计#3）：快照在锁内拷贝好，写盘交给调用方线程继续持锁外执行。
+    /** 异步写盘前拍好快照（审计#3），本线程执行同步原子写盘（tmp 文件 + 原子替换，不丢已登记的损伤）。
      *  写失败仅记日志（数据仍在内存，下次变更会再试）。 */
     private static void saveLater(Map<String, Entry> snapshot) {
         if (storePath == null) return;

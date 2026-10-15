@@ -29,7 +29,7 @@ for (const f of ['build.gradle', 'gradle.properties', 'settings.gradle']) {
 }
 
 console.log('[2/4] 构建…');
-const env = { ...process.env, JAVA_HOME, GRADLE_USER_HOME: path.join(os.tmpdir(), 'gradlehome') };
+const env = { ...process.env, JAVA_HOME, GRADLE_USER_HOME: path.join(os.tmpdir(), 'gradlehome'), GRADLE_OPTS: '-Xmx512m -XX:MaxMetaspaceSize=128m' };
 execSync(`"${GRADLE}" --no-daemon build --console=plain`, { cwd: TMP, env, stdio: 'inherit' });
 
 console.log('[3/4] 产物回拷…');
