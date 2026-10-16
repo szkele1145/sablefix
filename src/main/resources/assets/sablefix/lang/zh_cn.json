@@ -192,7 +192,9 @@
   "sablefix.cmd.backup_dir": "备份目录：%s",
   "sablefix.cmd.backup_del_done": "已删除备份：%s",
   "sablefix.cmd.backup_del_fail": "删除备份失败：%s",
+  "sablefix.cmd.backup_del_locked": "删除备份被占用：%s（可能被游戏或其他进程锁定，稍后再试）",
   "sablefix.cmd.backup_purge_done": "已清空 %s 份备份",
   "sablefix.cmd.backup_purge_fail": "清空备份失败：%s",
+  "sablefix.cmd.backup_purge_locked": "清空备份被占用（部分文件被游戏或其他进程锁定），未删除任何文件",
   "sablefix.damage.stale_notice": "§6[SableFix] §c检测到 %s 个子层级文件残留只读（上次 fix 被中断）——用 /sablefix unmask 解除，Sable 才能保存进度"
 }

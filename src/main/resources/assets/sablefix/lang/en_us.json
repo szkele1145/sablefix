@@ -192,7 +192,9 @@
   "sablefix.cmd.backup_dir": "Backup dir: %s",
   "sablefix.cmd.backup_del_done": "Deleted backup: %s",
   "sablefix.cmd.backup_del_fail": "Delete backup failed: %s",
+  "sablefix.cmd.backup_del_locked": "Delete backup locked: %s (may be held by the game or another process, try again later)",
   "sablefix.cmd.backup_purge_done": "Purged %s backup(s)",
   "sablefix.cmd.backup_purge_fail": "Purge backups failed: %s",
+  "sablefix.cmd.backup_purge_locked": "Purge backups locked (some files held by the game or another process); nothing deleted",
   "sablefix.damage.stale_notice": "§6[SableFix] §c%s sublevel files are stale read-only (last fix interrupted) — run /sablefix unmask so Sable can save again"
 }

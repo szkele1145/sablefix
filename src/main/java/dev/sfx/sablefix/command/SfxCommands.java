@@ -582,6 +582,10 @@ public final class SfxCommands {
         } catch (java.nio.file.NoSuchFileException e) {
             src.sendFailure(tr("sablefix.cmd.backup_del_fail", "不存在: " + name));
             return 0;
+        } catch (java.nio.file.FileSystemException e) {
+            src.sendFailure(tr("sablefix.cmd.backup_del_locked", name));
+            SableFixMod.LOGGER.warn("backup-del locked: {}", name, e);
+            return 0;
         } catch (Exception e) {
             src.sendFailure(tr("sablefix.cmd.backup_del_fail", e.getMessage()));
             SableFixMod.LOGGER.error("backup-del failed: {}", name, e);
@@ -597,6 +601,10 @@ public final class SfxCommands {
             int n = dev.sfx.sablefix.net.ServerHandlers.purgeBackups(src.getServer());
             src.sendSuccess(() -> tr("sablefix.cmd.backup_purge_done", n), false);
             return 1;
+        } catch (java.nio.file.FileSystemException e) {
+            src.sendFailure(tr("sablefix.cmd.backup_purge_locked"));
+            SableFixMod.LOGGER.warn("backup-purge locked", e);
+            return 0;
         } catch (Exception e) {
             src.sendFailure(tr("sablefix.cmd.backup_purge_fail", e.getMessage()));
             SableFixMod.LOGGER.error("backup-purge failed", e);
