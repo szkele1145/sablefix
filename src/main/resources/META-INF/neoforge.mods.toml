@@ -4,10 +4,11 @@ license = "MIT"
 
 [[mods]]
 modId = "sablefix"
-version = "1.6.1"
+version = "1.6.2"
 displayName = "Sable Fix Core"
 description = """
 Sable 存档自愈与诊断核心（诊断优先，修复为辅）。
+v1.6.2：/sablefix check 新增“已登记损伤”摘要并按类型给处置指引（STALE_READONLY→unmask，TICKETS_STUCK→tickets-purge，SUBLVL_DEAD→repair-all/fix）；periodicWarn 一行汇总按类型输出并带处置命令；onPlayerJoin 返回深拷贝，避免锁外读半更新 count（同源 1.6.0 写盘回归）；ModLog.add 锁内 LOGGER 改为异步输出（ModLog 审计残余 nit 收口）；继续沿用 v1.6.1 P0 只读关服保护与启动兜底解锁。
 v1.6.1：修复 v1.6.0 异步写盘回归——写盘快照改为类锁内深拷贝（原先在写线程无锁读非线程安全的 LinkedHashMap，与主线程 periodicWarn/onPlayerJoin 并发可致 CME 或半更新状态、撕裂数据）；snapshot() 同步深拷贝；新增停服 flush 屏障，等队列排空再退出，避免面板强杀/正常退出丢掉最后几次登记。
 v1.6.0：优化——损伤登记簿写盘改为后台异步单线程队列，避免 synchronized 临界区内同步 IO 阻塞主线程；版本号同步到构建产物与顶栏。
 v1.5.5：审计修复——面板扫描失败冷却标记不再 Long.MIN_VALUE 溢出（面板卡“一直扫描中”根因）；ticketCount 读取加 clamp 防护（损坏包不再踢客户端）；关于页版本号统一到构建版本源，与顶栏同步；en 文本联系方式改为 GitHub Issues。继续沿用 v1.5.4 P0 只读关服保护与启动兜底解锁。

@@ -340,13 +340,50 @@ public final class SfxCommands {
         // 结果回主线程再发消息（sendSuccess 必须主线程）。命令本身立即返回。
         server.execute(() -> dev.sfx.sablefix.net.ServerHandlers.runAsync(() -> {
             try {
+                // 1.6.2：先报"已登记损伤"（持久化登记簿，跨重启保留）再报本次实扫结果。
+                // 实机反馈：fix 后自动重启仍报损坏时，用户无法一眼看出是哪一类损伤——
+                // 登记簿里明明有 SUBLVL_DEAD / STALE_READONLY，check 却只打扫描计数。
+                java.util.List<dev.sfx.sablefix.scan.DamageRegistry.Entry> dmg =
+                        dev.sfx.sablefix.scan.DamageRegistry.snapshot();
                 Path dir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
                 SubLevelScan.Report r = SubLevelScan.scan(dir);
                 long dead = r.slvlr().stream().mapToLong(SubLevelScan.SlvlIssue::deadPointers).sum();
                 long bad = r.slvls().stream().mapToLong(SubLevelScan.SlvlsIssue::badEntries).sum();
+                // 按 kind 汇总（保持登记顺序）：SUBLVL_DEAD×3(2 文件) 这类一行看完
+                java.util.LinkedHashMap<String, int[]> byKind = new java.util.LinkedHashMap<>();
+                for (var e : dmg) {
+                    int[] agg = byKind.computeIfAbsent(e.kind, k -> new int[2]);
+                    agg[0] += e.count;
+                    agg[1]++;
+                }
+                StringBuilder sb = new StringBuilder();
+                for (var en : byKind.entrySet()) {
+                    if (sb.length() > 0) sb.append(" §7| §f");
+                    sb.append(dev.sfx.sablefix.scan.DamageRegistry.kindLabel(en.getKey()))
+                            .append(" ×").append(en.getValue()[0])
+                            .append("§7(").append(en.getValue()[1]).append(" 项)§f");
+                }
+                final String kindSummary = sb.toString();
                 server.execute(() -> {
                     src.sendSuccess(() -> tr("sablefix.cmd.check_sub",
                             r.scannedSlvlr(), dead, r.scannedSlvls(), bad), false);
+                    if (kindSummary.isEmpty()) {
+                        src.sendSuccess(() -> tr("sablefix.cmd.check_damage_zero"), false);
+                    } else {
+                        src.sendSuccess(() -> tr("sablefix.cmd.check_damage",
+                                dmg.size(), kindSummary), false);
+                        // 分类型处置指引：STALE_READONLY 是 unmask（repair 无效），
+                        // TICKETS_STUCK 是 tickets-purge，其余走 repair（1.6.2）
+                        boolean hasRepairable = byKind.containsKey("SUBLVL_DEAD");
+                        boolean hasStale = byKind.containsKey("STALE_READONLY");
+                        boolean hasTickets = byKind.containsKey("TICKETS_STUCK");
+                        if (hasStale) src.sendSuccess(() -> tr("sablefix.cmd.check_hint_stale"), false);
+                        if (hasTickets) src.sendSuccess(() -> tr("sablefix.cmd.check_hint_tickets"), false);
+                        if (hasRepairable) src.sendSuccess(() -> tr("sablefix.cmd.check_hint_repair"), false);
+                        if (byKind.containsKey("SAVE_STALLED") && !hasRepairable && !hasStale && !hasTickets) {
+                            src.sendSuccess(() -> tr("sablefix.cmd.check_hint_stalled"), false);
+                        }
+                    }
                     if (!r.slvlr().isEmpty() || !r.slvls().isEmpty()) {
                         src.sendSuccess(() -> tr("sablefix.cmd.check_list_hint"), false);
                     }

@@ -15,6 +15,36 @@ const JAR = `sablefix-${VER}-1.21.1-neoforge.jar`;
 // 每个版本必须在此登记文案：载荷文案与版本号解耦会导致新版静默沿用旧文案（1.6.0 真实事故）。
 // 未登记 = 直接报错，绝不发出描述错误的更新说明。
 const CHANGELOGS = {
+  '1.6.2': {
+    en: `## v${VER} — check now shows registered damage with per-type recovery advice 🛠️
+
+### Check command: registered damage + hints
+- **/sablefix check** now prints *“Registered damage: N items”* alongside live scan counts — so a post-restart "still damaged" alert tells you **which kind** of damage (SUBLVL_DEAD / STALE_READONLY / TICKETS_STUCK / SAVE_STALLED) and what to do:
+  - STALE_READONLY → \`/sablefix unmask\` (repair will not help)
+  - TICKETS_STUCK → \`/sablefix tickets-purge apply\` (while stopped)
+  - SUBLVL_DEAD → \`/sablefix repair-all apply\` (or one-shot \`/sablefix fix\`)
+- Periodic WARN now aggregates by type with per-type recovery commands instead of raw \`file×count\`.
+
+### Under the hood
+- \`DamageRegistry.onPlayerJoin\` returns a **deep copy** of each entry — fixed the same 1.6.0-style tear as \`snapshot()\`: callers reading \`e.count\` off the lock could see half-updated numbers.
+- \`ModLog.add\` logger output moved out of the synchronized section (no more I/O under the class lock).
+
+Protocol v5 (compatible with 1.5.2+).`,
+    zh: `## 中文
+
+### check 命令：已登记损伤摘要 + 按类型处置建议
+- **/sablefix check** 现在会在体检计数之外打印“已登记损伤: N 项” —— 重启后“仍损坏”的提示能一眼看出是哪一类损伤（SUBLVL_DEAD / STALE_READONLY / TICKETS_STUCK / SAVE_STALLED），并给出处置命令：
+  - STALE_READONLY → \`/sablefix unmask\`（repair 无效）
+  - TICKETS_STUCK → \`/sablefix tickets-purge apply\`（停服后）
+  - SUBLVL_DEAD → \`/sablefix repair-all apply\`（或一键 \`/sablefix fix\`）
+- 定期 WARN 现在按类型聚合并附带处置命令，不再打原始 \`file×count\`。
+
+### 内部修
+- \`DamageRegistry.onPlayerJoin\` 返回条目**深拷贝**——修复与 \`snapshot()\` 同源的 1.6.0 样撕裂：调用方在锁外读 \`e.count\` 可能看到半更新数量。
+- \`ModLog.add\` 的 LOGGER 输出移出 synchronized 区（不再在类锁内做 I/O）。
+
+协议 v5（与 1.5.2 及以上兼容）。`,
+  },
   '1.6.1': {
     en: `## v${VER} — fix a regression I shipped in 1.6.0 🩹
 

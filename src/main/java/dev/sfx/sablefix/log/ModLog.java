@@ -31,10 +31,15 @@ public final class ModLog {
         Entry e = new Entry(LocalDateTime.now().format(FMT), level, msg);
         if (BUF.size() >= CAP) BUF.removeFirst();
         BUF.addLast(e);
+        // 1.6.2：LOGGER 输出移出 synchronized 区（审计残余 nit 收口）。
+        // SableFixMod.LOGGER 本身线程安全，但把同步输出留在类锁内会让
+        // 主线程 tick 与后台扫描线程争锁；仅日志顺序可能与入队顺序
+        // 微调，对内存环形缓冲无影响。
+        final String fMsg = "[log] " + msg;
         switch (level) {
-            case "WARN" -> SableFixMod.LOGGER.warn("[log] {}", msg);
-            case "ERROR" -> SableFixMod.LOGGER.error("[log] {}", msg);
-            default -> SableFixMod.LOGGER.info("[log] {}", msg);
+            case "WARN" -> SableFixMod.LOGGER.warn(fMsg);
+            case "ERROR" -> SableFixMod.LOGGER.error(fMsg);
+            default -> SableFixMod.LOGGER.info(fMsg);
         }
     }
 

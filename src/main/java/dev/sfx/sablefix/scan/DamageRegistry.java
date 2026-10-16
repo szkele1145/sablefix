@@ -160,21 +160,64 @@ public final class DamageRegistry {
         if (now - lastPeriodicWarnMs < dev.sfx.sablefix.watchdog.ThreadWatchdog.WARN_PERIOD_MS) return;
         lastPeriodicWarnMs = now;
         // 单行汇总（条目多时控制台不刷屏）；明细已由体检日志给过，这里只提醒"还有多少没修"
-        SableFixMod.LOGGER.warn("[SableFix][损伤未处置] 共 {} 项：{}——用 /sablefix repair / tickets-purge 处理",
-                DAMAGE.size(),
-                DAMAGE.values().stream().map(e -> e.file + "×" + e.count)
-                        .limit(5).collect(java.util.stream.Collectors.joining(", "))
-                        + (DAMAGE.size() > 5 ? " …" : ""));
+        // 1.6.2：按 kind 分级汇总并给出对应处置命令——原实现只打 "file×count"，
+        // STALE_READONLY 会显示成 "<stale read-only files>×1"，看不出该用 unmask 而非 repair。
+        Map<String, int[]> byKind = new LinkedHashMap<>();
+        for (Entry e : DAMAGE.values()) {
+            int[] agg = byKind.computeIfAbsent(e.kind, k -> new int[2]);
+            agg[0] += e.count;
+            agg[1]++;
+        }
+        StringBuilder sb = new StringBuilder();
+        for (Map.Entry<String, int[]> en : byKind.entrySet()) {
+            if (sb.length() > 0) sb.append(", ");
+            sb.append(kindLabel(en.getKey())).append('×').append(en.getValue()[1]);
+        }
+        SableFixMod.LOGGER.warn("[SableFix][损伤未处置] 共 {} 项：{}——{}",
+                DAMAGE.size(), sb, recoveryHint(byKind));
     }
 
-    /** 玩家进服：返回该玩家未提示过的条目快照（调用方渲染 MC 文案），并标记已提示。 */
+    /** 控制台/聊天可读的损伤类型名（避免把内部 kind 枚举名直接糊给用户）。1.6.2 起命令侧共用。 */
+    public static String kindLabel(String kind) {
+        return switch (kind) {
+            case "SUBLVL_DEAD" -> "子层级死指针";
+            case "TICKETS_STUCK" -> "票据堆积";
+            case "SAVE_STALLED" -> "保存卡顿";
+            case "STALE_READONLY" -> "残留只读";
+            default -> kind;
+        };
+    }
+
+    /** 按实际存在的损伤类型拼处置指引（调用方已持锁）。 */
+    private static String recoveryHint(Map<String, int[]> byKind) {
+        StringBuilder sb = new StringBuilder();
+        if (byKind.containsKey("STALE_READONLY")) sb.append("/sablefix unmask；");
+        if (byKind.containsKey("TICKETS_STUCK")) sb.append("/sablefix tickets-purge apply；");
+        if (byKind.containsKey("SUBLVL_DEAD")) sb.append("/sablefix repair-all apply 或 /sablefix fix；");
+        if (sb.length() == 0) sb.append("见 /sablefix check");
+        else sb.setLength(sb.length() - 1);
+        return sb.toString();
+    }
+
+    /** 玩家进服：返回该玩家未提示过的条目快照（调用方渲染 MC 文案），并标记已提示。
+     *  返回**深拷贝**（1.6.2）：调用方在锁外读 e.count 渲染文案，直接放活引用会与
+     *  后台扫描线程的 register() 并发改写 count → 提示里出现半更新的数量（与
+     *  snapshot() 同源的 1.6.0 回归，此处一并收口）。 */
     public static synchronized java.util.List<Entry> onPlayerJoin(UUID playerId) {
         java.util.List<Entry> pending = new java.util.ArrayList<>();
         if (DAMAGE.isEmpty()) return pending;
         Map<String, Boolean> seen = NOTIFIED.computeIfAbsent(playerId, k -> new ConcurrentHashMap<>());
         for (Entry e : DAMAGE.values()) {
             String id = e.kind + ":" + e.file;
-            if (seen.putIfAbsent(id, Boolean.TRUE) == null) pending.add(e);
+            if (seen.putIfAbsent(id, Boolean.TRUE) == null) {
+                Entry copy = new Entry();
+                copy.kind = e.kind;
+                copy.file = e.file;
+                copy.count = e.count;
+                copy.firstSeenMs = e.firstSeenMs;
+                copy.lastSeenMs = e.lastSeenMs;
+                pending.add(copy);
+            }
         }
         return pending;
     }
