@@ -185,5 +185,14 @@
   "sablefix.cmd.fix_busy": "§6[SableFix] §cA fix is already running — duplicate execution rejected (race protection)",
   "sablefix.cmd.unmask_done": "§6[SableFix] §aUnlocked %s stale read-only sublevel files (Sable write-back restored)",
   "sablefix.cmd.help_unmask": "fallback unlock: clears stale read-only flags left by an interrupted fix (run when Sable cannot save sublevels)",
+  "sablefix.cmd.help_backup": "backup management: list / del <name> / purge (in world/backups/sablefix/)",
+  "sablefix.cmd.backup_none": "No backups yet",
+  "sablefix.cmd.backup_count": "%s backup(s):",
+  "sablefix.cmd.backup_row": "§7%s §f%s §7(age: %s)",
+  "sablefix.cmd.backup_dir": "Backup dir: %s",
+  "sablefix.cmd.backup_del_done": "Deleted backup: %s",
+  "sablefix.cmd.backup_del_fail": "Delete backup failed: %s",
+  "sablefix.cmd.backup_purge_done": "Purged %s backup(s)",
+  "sablefix.cmd.backup_purge_fail": "Purge backups failed: %s",
   "sablefix.damage.stale_notice": "§6[SableFix] §c%s sublevel files are stale read-only (last fix interrupted) — run /sablefix unmask so Sable can save again"
 }

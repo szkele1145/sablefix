@@ -61,6 +61,13 @@ public final class SfxCommands {
                 .then(Commands.literal("tickets-purge")
                         .then(Commands.literal("dry").executes(c -> ticketsPurge(c.getSource(), false)))
                         .then(Commands.literal("apply").executes(c -> ticketsPurge(c.getSource(), true))))
+                .then(Commands.literal("backup")
+                        .then(Commands.literal("list").executes(c -> backupList(c.getSource())))
+                        .then(Commands.literal("del")
+                                .then(Commands.argument("name", StringArgumentType.string())
+                                        .executes(c -> backupDel(c.getSource(),
+                                                StringArgumentType.getString(c, "name")))))
+                        .then(Commands.literal("purge").executes(c -> backupPurge(c.getSource()))))
                 .then(Commands.literal("diag")
                         .then(Commands.argument("pos", net.minecraft.commands.arguments.coordinates.BlockPosArgument.blockPos())
                                 .executes(c -> diag(c.getSource(), net.minecraft.commands.arguments.coordinates.BlockPosArgument.getLoadedBlockPos(c, "pos")))))
@@ -315,6 +322,18 @@ public final class SfxCommands {
         return Component.translatable(key, args);
     }
 
+    /** 毫秒→可读时长（几秒前/几分钟前/几小时前/几天前）。服务端已减掉 now，此处只做展示。 */
+    private static String fmtAge(long ageMs) {
+        if (ageMs < 0) ageMs = 0;
+        long s = ageMs / 1000;
+        if (s < 60) return s + "秒前";
+        long m = s / 60;
+        if (m < 60) return m + "分钟前";
+        long h = m / 60;
+        if (h < 24) return h + "小时前";
+        return h / 24 + "天前";
+    }
+
     private static int help(CommandSourceStack src) {
         src.sendSuccess(() -> tr("sablefix.cmd.help_title"), false);
         src.sendSuccess(() -> Component.literal("§7/sablefix check §f— ").append(tr("sablefix.cmd.help_check")), false);
@@ -329,6 +348,8 @@ public final class SfxCommands {
         src.sendSuccess(() -> Component.literal("§7/sablefix tickets-purge dry|apply §f— ").append(tr("sablefix.cmd.help_purge")), false);
         src.sendSuccess(() -> Component.literal("§7/sablefix diag <x y z> §f— ").append(tr("sablefix.cmd.help_diag")), false);
         src.sendSuccess(() -> Component.literal("§7/sfxpanel §f— ").append(tr("sablefix.cmd.help_panel")), false);
+        src.sendSuccess(() -> Component.literal("§7/sablefix backup list|del <name>|purge §f— ")
+                .append(tr("sablefix.cmd.help_backup")), false);
         src.sendSuccess(() -> tr("sablefix.cmd.help_passive"), false);
         src.sendSuccess(() -> tr("sablefix.cmd.help_qq"), false);
         return 1;
@@ -520,6 +541,67 @@ public final class SfxCommands {
             SableFixMod.LOGGER.error("tickets-purge failed", e);
         }
         return 0;
+    }
+
+    /**
+     * 备份列表：回显 backups/sablefix/ 下的 .bak 文件（按时间新→旧，最多 8 行），
+     * 目录不存在或为空时提示。IO 很廉价，直接主线程执行。
+     */
+    private static int backupList(CommandSourceStack src) {
+        MinecraftServer server = src.getServer();
+        List<dev.sfx.sablefix.net.NetHandler.PanelData.BackupRow> rows =
+                dev.sfx.sablefix.net.ServerHandlers.listBackups(server);
+        Path backupDir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
+                .resolve("backups").resolve("sablefix");
+        src.sendSuccess(() -> tr("sablefix.cmd.backup_dir", backupDir.toString()), false);
+        if (rows.isEmpty()) {
+            src.sendSuccess(() -> tr("sablefix.cmd.backup_none"), false);
+            return 1;
+        }
+        src.sendSuccess(() -> tr("sablefix.cmd.backup_count", rows.size()), false);
+        int shown = Math.min(rows.size(), 8);
+        for (int i = 0; i < shown; i++) {
+            dev.sfx.sablefix.net.NetHandler.PanelData.BackupRow b = rows.get(i);
+            src.sendSuccess(() -> tr("sablefix.cmd.backup_row", b.name(), dev.sfx.sablefix.client.ui.Format.fmtSize(b.size()),
+                    fmtAge(b.ageMs())), false);
+        }
+        if (rows.size() > shown) {
+            src.sendSuccess(() -> tr("sablefix.panel.backups_more", rows.size() - shown), false);
+        }
+        return 1;
+    }
+
+    /**
+     * 删除单个备份：仅允许纯文件名（内部已防路径遍历），删除后回显结果。
+     */
+    private static int backupDel(CommandSourceStack src, String name) {
+        try {
+            dev.sfx.sablefix.net.ServerHandlers.deleteBackup(src.getServer(), name);
+            src.sendSuccess(() -> tr("sablefix.cmd.backup_del_done", name), false);
+            return 1;
+        } catch (java.nio.file.NoSuchFileException e) {
+            src.sendFailure(tr("sablefix.cmd.backup_del_fail", "不存在: " + name));
+            return 0;
+        } catch (Exception e) {
+            src.sendFailure(tr("sablefix.cmd.backup_del_fail", e.getMessage()));
+            SableFixMod.LOGGER.error("backup-del failed: {}", name, e);
+            return 0;
+        }
+    }
+
+    /**
+     * 清空全部备份：返回删除数量并回显。
+     */
+    private static int backupPurge(CommandSourceStack src) {
+        try {
+            int n = dev.sfx.sablefix.net.ServerHandlers.purgeBackups(src.getServer());
+            src.sendSuccess(() -> tr("sablefix.cmd.backup_purge_done", n), false);
+            return 1;
+        } catch (Exception e) {
+            src.sendFailure(tr("sablefix.cmd.backup_purge_fail", e.getMessage()));
+            SableFixMod.LOGGER.error("backup-purge failed", e);
+            return 0;
+        }
     }
 
     /**

@@ -185,5 +185,14 @@
   "sablefix.cmd.fix_busy": "§6[SableFix] §c已有 fix 在运行中——拒绝重复执行（防止竞态）",
   "sablefix.cmd.unmask_done": "§6[SableFix] §a已解锁 %s 个残留只读的子层级文件（Sable 写回恢复）",
   "sablefix.cmd.help_unmask": "兜底解锁：清除 fix 中断后残留的只读标记（Sable 无法保存子层级时执行）",
+  "sablefix.cmd.help_backup": "备份管理：list 列表 / del <名> 删除 / purge 清空（位于 world/backups/sablefix/）",
+  "sablefix.cmd.backup_none": "暂无备份",
+  "sablefix.cmd.backup_count": "共 %s 份备份：",
+  "sablefix.cmd.backup_row": "§7%s §f%s §7(%s 前)",
+  "sablefix.cmd.backup_dir": "备份目录：%s",
+  "sablefix.cmd.backup_del_done": "已删除备份：%s",
+  "sablefix.cmd.backup_del_fail": "删除备份失败：%s",
+  "sablefix.cmd.backup_purge_done": "已清空 %s 份备份",
+  "sablefix.cmd.backup_purge_fail": "清空备份失败：%s",
   "sablefix.damage.stale_notice": "§6[SableFix] §c检测到 %s 个子层级文件残留只读（上次 fix 被中断）——用 /sablefix unmask 解除，Sable 才能保存进度"
 }

@@ -263,7 +263,8 @@ public final class ServerHandlers {
 
     /** 收集 backups/sablefix 备份清单（修复/清理的自动备份）。目录读取廉价（<几十条文件名），
      *  随扫描缓存一起走——缓存 TTL 内多次开面板零重复 IO。失败静默空清单（备份页显示"无备份"）。 */
-    private static List<NetHandler.PanelData.BackupRow> listBackups(MinecraftServer server) {
+    /** 对外：面板读取备份清单（缓存 TTL 60s，删除后下次打开面板/请求面板数据即刷新）。 */
+    public static List<NetHandler.PanelData.BackupRow> listBackups(MinecraftServer server) {
         try {
             Path world = worldDir(server);
             Path backupDir = world.resolve("backups").resolve("sablefix");
@@ -287,6 +288,35 @@ public final class ServerHandlers {
         } catch (Exception e) {
             return List.of();
         }
+    }
+
+    /** 删除单个备份文件（仅允许纯文件名，防路径遍历），不存在抛 NoSuchFileException。 */
+    public static void deleteBackup(MinecraftServer server, String name) throws IOException {
+        if (name == null || name.isEmpty() || name.contains("/") || name.contains("\\")) {
+            throw new IllegalArgumentException("非法备份文件名: " + name);
+        }
+        Path backupDir = worldDir(server).resolve("backups").resolve("sablefix");
+        Path target = backupDir.resolve(name);
+        if (!Files.isRegularFile(target)) {
+            throw new java.nio.file.NoSuchFileException(target.toString());
+        }
+        Files.delete(target);
+        SableFixMod.LOGGER.info("backup deleted: {}", target);
+    }
+
+    /** 清空 backups/sablefix 下全部 .bak，返回删除数量。 */
+    public static int purgeBackups(MinecraftServer server) throws IOException {
+        Path backupDir = worldDir(server).resolve("backups").resolve("sablefix");
+        if (!Files.isDirectory(backupDir)) return 0;
+        int n = 0;
+        try (DirectoryStream<Path> ds = Files.newDirectoryStream(backupDir, "*.bak")) {
+            for (Path p : ds) {
+                Files.delete(p);
+                n++;
+            }
+        }
+        SableFixMod.LOGGER.info("backup purge: {} file(s) deleted", n);
+        return n;
     }
 
     /** GUI 修复请求：dry 预览 / apply 备份+清零。全部主线程执行（文件小、耗时毫秒级）。 */
