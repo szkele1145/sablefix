@@ -12,6 +12,8 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.network.PacketDistributor;
 
+
+
 import static dev.sfx.sablefix.client.ui.Theme.*;
 import static dev.sfx.sablefix.client.ui.Widgets.dot;
 import static dev.sfx.sablefix.client.ui.Widgets.inBox;
@@ -56,6 +58,11 @@ public class SfxPanelScreen extends Screen {
 
     private int tab;
     private double logScroll;
+    // 日志滚动条（backlog：日志滚动夹取——原只有滚轮，无轨道/无拖拽；加轨道+滑块+按住拖拽）
+    private boolean logDragging;
+    private double logDragStartMy, logDragStartScroll;
+    private int logTrackTop, logTrackH, logMax;   // render 时记录，拖拽/点击用
+    private int logTrackX;                          // 轨道 x（卡片右缘 - 10）
     private long animStart = Util.getMillis();
     private NetHandler.PanelData data;
     private NetHandler.DiagRes diagRes;
@@ -314,6 +321,8 @@ public class SfxPanelScreen extends Screen {
             PacketDistributor.sendToServer(new NetHandler.PurgeReq(purgeConfirm));
             return true;
         }
+        // 日志页：滚动条轨道点击 → 跳到该位置并进入拖拽
+        if (logTrackClick(mx, my)) return true;
         return super.mouseClicked(mx, my, button);
     }
 
@@ -357,6 +366,41 @@ public class SfxPanelScreen extends Screen {
             return true;
         }
         return super.mouseScrolled(mx, my, dx, dy);
+    }
+
+    // ---- 日志滚动夹取（backlog）----
+    // 轨道 + 滑块：点击轨道 = 跳到该位置；按住拖拽 = 连续滚动；松开释放。
+    // MC Screen 无 mousePressed，点击跳转并按下拖拽统一在_trackClick/mouseDragged 里做。
+    private boolean logTrackClick(double mx, double my) {
+        if (tab == 5 && logMax > 0 && inBox(mx, my, logTrackX, logTrackTop, 8, logTrackH)) {
+            double ratio = (my - logTrackTop) / logTrackH;
+            logScroll = Math.max(0, Math.min(logMax, ratio * logMax));
+            logDragging = true;
+            logDragStartMy = my;
+            logDragStartScroll = logScroll;
+            return true;
+        }
+        return false;
+    }
+
+    @Override
+    public boolean mouseDragged(double mx, double my, int button, double dx, double dy) {
+        if (tab == 5 && logDragging && logTrackH > 0) {
+            double d = my - logDragStartMy;
+            double ratio = d / logTrackH;
+            logScroll = Math.max(0, Math.min(logMax, logDragStartScroll + ratio * logMax));
+            return true;
+        }
+        return super.mouseDragged(mx, my, button, dx, dy);
+    }
+
+    @Override
+    public boolean mouseReleased(double mx, double my, int button) {
+        if (tab == 5 && logDragging) {
+            logDragging = false;
+            return true;
+        }
+        return super.mouseReleased(mx, my, button);
     }
 
     private static boolean inBox(double mx, double my, int x, int y, int w, int h) {
@@ -1085,6 +1129,20 @@ public class SfxPanelScreen extends Screen {
                 dtr(g, line, x + 10, iy, w - 24, withA(TEXT, a), false);
             }
             iy += rowH;
+        }
+        // 日志滚动条：轨道 + 滑块（backlog：日志滚动夹取）。仅在有溢出时显示。
+        logMax = Math.max(0, total - maxRows);
+        if (logMax > 0) {
+            logTrackX = x + w - 14;
+            logTrackTop = ly + 16;
+            logTrackH = Math.max(16, maxRows * rowH - 4);
+            roundRect(g, logTrackX, logTrackTop, 6, logTrackH, 3, 0x22000000, 0);
+            int thumbH = Math.max(8, (int) (logTrackH * (1.0 - (double) logScroll / logMax) - 2));
+            int thumbY = logTrackTop + 1 + (int) ((logScroll / (double) logMax) * (logTrackH - thumbH - 2));
+            roundRect(g, logTrackX + 1, thumbY, 4, thumbH, 2,
+                    withA(logDragging ? ACC : DIM, a), 0);
+        } else {
+            logTrackX = 0; logTrackTop = 0; logTrackH = 0;
         }
         if (scrolled) {
             g.drawString(font, L("sablefix.panel.log_hint"), x + 10, ly + cardH - 12, withA(FAINT, a), false);
