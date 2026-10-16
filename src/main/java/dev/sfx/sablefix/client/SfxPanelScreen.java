@@ -181,9 +181,11 @@ public class SfxPanelScreen extends Screen {
     }
 
     private void request() {
-        repairConfirmFile = null;
-        repairDryFile = null;
-        purgeConfirm = false;
+        // 修复/清理进行中时不重置确认态：自动刷新（tick 每 30s）若在此窗口触发，
+        // 会把 repairConfirmFile/repairDryFile 清空，导致用户第二次点击退回 dry 预览——
+        // 也就是 backlog 里的 "repairBtns 16ms 陈旧点击"。in-flight 期间保留状态。
+        if (!repairInFlight) { repairConfirmFile = null; repairDryFile = null; }
+        if (!purgeInFlight) purgeConfirm = false;
         PacketDistributor.sendToServer(new NetHandler.PanelReq());
     }
 
@@ -307,6 +309,8 @@ public class SfxPanelScreen extends Screen {
         }
         // 监视页：票据清理按钮（第一次=dry 预览，再点=确认 apply）
         if (tab == 4 && purgeBtnX >= 0 && inBox(mx, my, purgeBtnX, purgeBtnY, 88, 18)) {
+            if (purgeInFlight) return true;   // 在途忽略重复点击
+            purgeInFlight = true;
             PacketDistributor.sendToServer(new NetHandler.PurgeReq(purgeConfirm));
             return true;
         }
@@ -622,11 +626,14 @@ public class SfxPanelScreen extends Screen {
     private record RepairBtn(String file, int x, int y) {}
     private final java.util.List<RepairBtn> repairBtns = new java.util.ArrayList<>();
     private String repairConfirmFile;   // 待确认（第一次点=发 dry 预览，第二次点同一文件=apply）
+    private boolean repairInFlight;     // repair 请求在途（dry/apply 未回），期间 request() 不重置确认态
     private String repairMsg;
     private boolean repairMsgOk;
     private String repairDryFile;       // dry 预览对应的文件名（确认目标）
+    private boolean purgeInFlight;       // purge 请求在途，同理
 
     public void onRepairRes(NetHandler.RepairRes r) {
+        repairInFlight = false;
         if (!r.ok()) {
             repairMsg = L(r.errKey(), r.errArg() == null || r.errArg().isEmpty() ? "" : r.errArg());
             repairMsgOk = false;
@@ -663,14 +670,18 @@ public class SfxPanelScreen extends Screen {
     }
 
     private void clickRepair(NetHandler.PanelData.FileRow f) {
+        if (repairInFlight) return;   // 在途请求未回：忽略重复点击（backlog: repairBtns 陈旧点击）
         if (f.name().equals(repairConfirmFile) && f.name().equals(repairDryFile)) {
+            repairInFlight = true;
             PacketDistributor.sendToServer(new NetHandler.RepairReq(f.name(), true));   // 二次确认 → apply
         } else {
+            repairInFlight = true;
             PacketDistributor.sendToServer(new NetHandler.RepairReq(f.name(), false));  // 第一次 → dry
         }
     }
 
     public void onPurgeRes(NetHandler.PurgeRes r) {
+        purgeInFlight = false;
         if (!r.ok()) {
             purgeMsg = L(r.errKey());
             purgeMsgOk = false;
@@ -1064,9 +1075,12 @@ public class SfxPanelScreen extends Screen {
             int cut = line.indexOf(']');
             if (cut > 0 && cut + 1 < line.length()) {
                 String head = line.substring(0, cut + 1);
-                String body = line.substring(cut + 2);
-                dtr(g, head, x + 10, iy, 92, withA(FAINT, a), false);
-                dtr(g, body, x + 106, iy, w - 120, withA(err ? BAD : (wrn ? WARN : TEXT), a), false);
+                // 时间戳+等级不再按 92px 硬截断（避免在 ] 附近丢字）；] 后是否带空格按实际字符定位 body。
+                dtr(g, head, x + 10, iy, w - 34, withA(FAINT, a), false);
+                int headW = Math.max(font.width(head), 1);
+                int bodyStart = (cut + 2 <= line.length() && line.charAt(cut + 1) == ' ') ? cut + 2 : cut + 1;
+                String body = line.substring(bodyStart);
+                dtr(g, body, x + 10 + headW + 2, iy, w - 24 - headW - 2, withA(err ? BAD : (wrn ? WARN : TEXT), a), false);
             } else {
                 dtr(g, line, x + 10, iy, w - 24, withA(TEXT, a), false);
             }
