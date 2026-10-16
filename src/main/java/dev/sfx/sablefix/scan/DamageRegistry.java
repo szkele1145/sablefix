@@ -88,13 +88,52 @@ public final class DamageRegistry {
         boolean changed = isNew || e.count != count;
         e.count = count;
         e.lastSeenMs = now;
-        if (changed) WRITE_POOL.execute(() -> saveLater(new LinkedHashMap<>(DAMAGE)));
+        if (changed) {
+            Map<String, Entry> snap = snapshotLocked();   // 锁内深拷贝：写线程只读私有副本
+            WRITE_POOL.execute(() -> saveLater(snap));
+        }
         return isNew;
     }
 
     /** 问题消失（如玩家已用 repair 修复）时移除，下次 WARN 不再出现。写盘同样移到锁外（审计#3）。 */
     public static synchronized void clear(Kind kind, String file) {
-        if (DAMAGE.remove(kind.name() + ":" + file) != null) WRITE_POOL.execute(() -> saveLater(new LinkedHashMap<>(DAMAGE)));
+        if (DAMAGE.remove(kind.name() + ":" + file) != null) {
+            Map<String, Entry> snap = snapshotLocked();   // 同样锁内深拷贝
+            WRITE_POOL.execute(() -> saveLater(snap));
+        }
+    }
+
+    /** 调用方必须已持有 DamageRegistry 类锁。深拷贝成写线程可独占读取的普通 Map：
+     *  DAMAGE 是普通 LinkedHashMap，锁外 new LinkedHashMap<>(DAMAGE) 会与主线程
+     *  的 periodicWarn/onPlayerJoin 并发 → CME 或半更新状态；浅拷贝还会让 Entry
+     *  字段（count/lastSeenMs）被活对象持续改写，写出撕裂数据。（1.6.1 修 1.6.0 回归） */
+    private static Map<String, Entry> snapshotLocked() {
+        Map<String, Entry> snap = new LinkedHashMap<>(DAMAGE.size() * 2);
+        for (Map.Entry<String, Entry> en : DAMAGE.entrySet()) {
+            Entry src = en.getValue();
+            Entry copy = new Entry();
+            copy.kind = src.kind;
+            copy.file = src.file;
+            copy.count = src.count;              // int 读在锁内完成，避免撕裂
+            copy.firstSeenMs = src.firstSeenMs;
+            copy.lastSeenMs = src.lastSeenMs;
+            snap.put(en.getKey(), copy);
+        }
+        return snap;
+    }
+
+    /** 停服收尾：阻塞等已提交的写盘任务全部落盘（barrier：单线程 FIFO，空任务完成即代表
+     *  此前所有快照都写完了），避免守护线程随 JVM 退出把队列里的登记丢掉。
+     *  synchronized = flush 期间不再有新任务入队，barrier 才真正覆盖"此前全部"。
+     *  刻意不调 WRITE_POOL.shutdown()：单人世界/面板会在同一 JVM 内重开服务器，
+     *  shutdown 后 register 会抛 RejectedExecutionException 反而更糟。（1.6.1） */
+    public static synchronized void flush(long timeoutMs) {
+        if (storePath == null) return;
+        try {
+            WRITE_POOL.submit(() -> { }).get(timeoutMs, java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (Exception e) {
+            SableFixMod.LOGGER.warn("损伤登记簿收尾写盘等待失败（内存数据仍在，下次变更会重试）", e);
+        }
     }
 
     /** 锚定存储路径 + 载入已有登记（重启后损伤清单不丢）。storeDir = <世界>/data（由调用方传入，Registry 不依赖 MC 类型）。 */
@@ -145,9 +184,10 @@ public final class DamageRegistry {
         NOTIFIED.remove(playerId);
     }
 
-    /** 当前损伤快照（面板后续版本用）。 */
+    /** 当前损伤快照（面板/DiagReport 在后台线程读，必须是深拷贝——Entry 可变，
+     *  浅拷贝会让调用方读到被 register 并发改写的 count/lastSeenMs）。 */
     public static synchronized java.util.List<Entry> snapshot() {
-        return new java.util.ArrayList<>(DAMAGE.values());
+        return new java.util.ArrayList<>(snapshotLocked().values());
     }
 
     /** 异步写盘前拍好快照（审计#3），本线程执行同步原子写盘（tmp 文件 + 原子替换，不丢已登记的损伤）。

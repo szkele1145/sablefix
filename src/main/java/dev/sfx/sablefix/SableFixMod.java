@@ -22,7 +22,7 @@ import org.slf4j.LoggerFactory;
 @Mod(SableFixMod.MODID)
 public class SableFixMod {
     public static final String MODID = "sablefix";
-    public static final String VERSION = "1.6.0";
+    public static final String VERSION = "1.6.1";
     public static final String TG_URL = "https://t.me/maodie_mods";
     public static final String QQ_GROUP = "1129543042";
     public static final Logger LOGGER = LoggerFactory.getLogger("SableFix");
@@ -70,6 +70,8 @@ public class SableFixMod {
     private void onServerStopping(ServerStoppingEvent event) {
         ThreadWatchdog.stop();
         SaveObserver.stop();
+        // 1.6.1：写盘已异步化，停服必须等队列排空，否则面板强杀/正常退出会丢掉最后几次登记
+        DamageRegistry.flush(3000L);
     }
 
     /**
