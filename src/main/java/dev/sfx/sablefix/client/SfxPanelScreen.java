@@ -745,7 +745,7 @@ public class SfxPanelScreen extends Screen {
         for (int i = 0; i < 3; i++) {
             String label = sLabels[i] + (browseSort == i ? (browseSortDesc ? " ↓" : " ↑") : "");
             int cw = compact ? 52 : Math.max(52, font.width(label) + 20);
-            int cxx = sx + (i == 0 ? 0 : 0);   // sx 现在指向最左 chip 起点
+            int cxx = sx;   // sx 现在指向最左 chip 起点
             int offset = 0;
             for (int j = 0; j < i; j++) {
                 String lj = sLabels[j] + (browseSort == j ? (browseSortDesc ? " ↓" : " ↑") : "");

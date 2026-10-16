@@ -93,6 +93,7 @@
   "sablefix.cmd.list_slvlr": "%s: 死指针 %s / 有效 %s, %s 字节",
   "sablefix.cmd.list_slvls": "%s: 坏条目 %s, %s 字节",
   "sablefix.cmd.list_fail": "出错: %s",
+  "sablefix.cmd.diag_fail": "区块诊断失败: %s",
   "sablefix.cmd.tickets_none": "票据文件不存在（视为 0 条，正常）",
   "sablefix.cmd.tickets_ok": "票据共 %s 条, 文件 %s 字节",
   "sablefix.cmd.tickets_fail": "票据读取失败: %s",

@@ -492,7 +492,7 @@ public final class SfxCommands {
             src.sendSuccess(() -> tr("sablefix.cmd.diag_be", fbe), false);
             return 1;
         } catch (Exception e) {
-            src.sendFailure(tr("sablefix.cmd.list_fail", e.getMessage()));
+            src.sendFailure(tr("sablefix.cmd.diag_fail", e.getMessage()));
             SableFixMod.LOGGER.error("diag 命令失败", e);
         }
         return 0;
