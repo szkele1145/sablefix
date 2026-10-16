@@ -45,6 +45,32 @@ Protocol v5 (compatible with 1.5.2+).`,
 
 协议 v5（与 1.5.2 及以上兼容）。`,
   },
+  '1.6.3': {
+    en: `## v1.6.3 — maintenance release 🔧
+
+### P0 fix: /sablefix fix no longer reports "damaged" after restart
+- \`endFix()\` now runs before \`halt(false)\`; the write mask is no longer lifted before shutdown, preventing Sable's dying write-back from overwriting freshly-cleared slots. Unlocking is handled by \`ServerStoppedEvent\` (after save) plus a startup directory fallback that clears \`STALE_READONLY\`.
+
+### Audit complete
+- SfxPanelScreen + SfxCommands command surface audited: all 13 subcommands bound to OP level 2; every destructive op has dry→apply confirmation or permission gating. No changes needed.
+
+### Backlog verified
+- Log scrolling hitbox, repairBtns click target, backup name truncation, version number sync (4 places), and saveLater atomic tmp+replace write all confirmed OK. No changes needed.
+
+Protocol v5 (compatible with 1.5.2+).`,
+    zh: `## v1.6.3 — 维护版 🔧
+
+### P0 修复：/sablefix fix 重启后不再误报“已损坏”
+- \`endFix()\` 现前置于 \`halt(false)\`；停服前不再提前解除写掩码，防止 Sable 垂死写回覆盖刚清零的槽位。解锁改由 \`ServerStoppedEvent\`（存档落盘后）+ 启动目录兜底（清理 \`STALE_READONLY\`）处理。
+
+### 审计完成
+- SfxPanelScreen + SfxCommands 命令暴露面已审计：全部 13 个子命令绑定 OP 2 级权限；每项破坏性操作均有 dry→apply 确认或权限限制。无需改动。
+
+### Backlog 已核实
+- 日志滚动命中区、repairBtns 点击目标、备份名显示截断、版本号四处同步、saveLater 原子 tmp+replace 写盘均已确认无误。无需改动。
+
+协议 v5（与 1.5.2 及以上兼容）。`,
+  },
   '1.6.1': {
     en: `## v${VER} — fix a regression I shipped in 1.6.0 🩹
 

@@ -4,7 +4,7 @@ license = "MIT"
 
 [[mods]]
 modId = "sablefix"
-version = "1.6.2"
+version = "1.6.3"
 displayName = "Sable Fix Core"
 description = """
 Sable 存档自愈与诊断核心（诊断优先，修复为辅）。
