@@ -699,7 +699,9 @@ public class SfxPanelScreen extends Screen {
             repairDryFile = r.file();
             repairConfirmFile = r.file();
             String plan = L("sablefix.panel.repair_plan_gui", r.slots(), r.preview());
-            repairMsg = note.isEmpty() ? plan : (note + "\n" + plan);
+            // 五轮审计#5：repairMsg 用 dtr 单行渲染，'\n' 不换行会把后半段截成省略号
+            // （plan 槽数+预览丢失）——改为单行 "note — plan" 连接
+            repairMsg = note.isEmpty() ? plan : (note + " — " + plan);
             repairMsgOk = true;
         } else {
             repairConfirmFile = null;
