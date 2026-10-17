@@ -340,7 +340,9 @@ public class SfxPanelScreen extends Screen {
     @Override
     public boolean mouseScrolled(double mx, double my, double dx, double dy) {
         if (tab == 5) {
-            logScroll = Math.max(0, logScroll - dy * 3);
+            // 五轮审计#2：原来只 clamp 下界，logScroll 可无限增长——超上限后 start 被压到 0
+            // （视口突跳回最旧日志），且 logScroll/logMax > 1 会把滑块算出轨道外。
+            logScroll = Math.max(0, Math.min(logMax, logScroll - dy * 3));
             return true;
         }
         if (tab == 4) {
@@ -351,11 +353,9 @@ public class SfxPanelScreen extends Screen {
             return true;
         }
         if (tab == 2) {
-            // 上限 = 内容底 - 可视底（render 时记录 browseContentBottom）
-            int px = SIDE_X + SIDE_W + 10, py = 30;
-            int h = height - 38;
-            int rowsBottom = py + 42 + (h - 42) - 10;   // 与 pageBrowse 的 rowsBottom 对应（近似 clamp 即可）
-            int max = Math.max(0, browseContentBottom - rowsBottom);
+            // 五轮审计#3：原来在此重算一份 rowsBottom 硬编码副本（曾与 render 漂移 22px，同类问题
+            // 见 GUI 审计#5 的 ticket 页）。改为直接用 render 记录的实测可视底端。
+            int max = Math.max(0, browseContentBottom - browseRowsBottom);
             browseScroll = Math.max(0, Math.min(max, browseScroll - (int) (dy * 24)));
             return true;
         }
@@ -755,6 +755,7 @@ public class SfxPanelScreen extends Screen {
     private boolean browseSortDesc = true;
     private int browseScroll;
     private int browseContentBottom;   // 渲染时记录，滚动上限
+    private int browseRowsBottom;      // 渲染时记录的行区可视底端（滚动 clamp 用）
     private final java.util.List<int[]> browseHitRows = new java.util.ArrayList<>(); // [y, h] 每行（表头点击用不到，预留）
 
     private java.util.stream.Stream<NetHandler.PanelData.FileRow> browseStream() {
@@ -862,7 +863,7 @@ public class SfxPanelScreen extends Screen {
 
         int ly = fy + 26;
         int cardH = h - (ly - y) - 4;
-        if (cardH < 30) return;
+        if (cardH < 30) { browseRowsBottom = 0; browseContentBottom = 0; return; }
         roundRect(g, x, ly, w, cardH, 10, CARD, BORDER | a);
         // 列位置按宽度百分比（防超框）
         int sizeX = x + w * 46 / 100, liveX = x + w * 66 / 100, stX = x + w * 82 / 100;
@@ -876,6 +877,7 @@ public class SfxPanelScreen extends Screen {
         // 行区滚动裁剪
         int rowsTop = ly + 20;
         int rowsBottom = ly + cardH - 6;
+        browseRowsBottom = rowsBottom;
         g.enableScissor(x + 1, rowsTop, x + w - 1, rowsBottom);
         int iy = rowsTop - browseScroll;
         int row = 0;
@@ -1132,6 +1134,9 @@ public class SfxPanelScreen extends Screen {
         }
         // 日志滚动条：轨道 + 滑块（backlog：日志滚动夹取）。仅在有溢出时显示。
         logMax = Math.max(0, total - maxRows);
+        // 五轮审计#2（续）：日志被清空/缩短时 logMax 变小，残留的 logScroll 会让随后新增的日志
+        // 一出现就跳回最旧（start 被压到 0）；这里按当前上限回收一次。
+        if (logScroll > logMax) logScroll = logMax;
         if (logMax > 0) {
             logTrackX = x + w - 14;
             logTrackTop = ly + 16;
