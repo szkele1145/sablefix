@@ -361,7 +361,7 @@ public class SfxPanelScreen extends Screen {
         }
         if (tab == 6) {
             // 上限 = 内容底端 - 可视底端（render 时记录）
-            double max = Math.max(0, aboutContentEnd - aboutInnerBottom + 4);
+            double max = Math.max(0, aboutContentH - aboutAvailH + 4);
             aboutScroll = Math.max(0, Math.min(max, aboutScroll - dy * 4));
             return true;
         }
@@ -1151,15 +1151,18 @@ public class SfxPanelScreen extends Screen {
 
     // ---- 关于 ----
     private double aboutScroll;
-    private int aboutContentEnd;   // 上次绘制的内容底端（用于滚动上限）
-    private int aboutInnerBottom;  // 可视区底端（滚动 clamp 用）
+    // 五轮审计#1：原来存的是"绝对内容底端"（= innerTop - scroll + 内容高），会随滚动变小，
+    // 拿它算滚动上限属于量纲混用（越滚上限越小，滚到底后回不去）；与 availH 比较更是高度 vs 坐标。
+    // 改为只记录与滚动量无关的两个高度量。
+    private int aboutContentH;     // 内容总高度（滚动上限用）
+    private int aboutAvailH;       // 可视区高度（滚动上限 / 溢出提示用）
     private int tgBtnX, tgBtnY, tgBtnW, tgBtnH;  // Telegram 横幅命中区
     private long tgCopiedAt = -1;                // 点击复制后的提示显示时间戳
 
     private void pageAbout(GuiGraphics g, int x, int y, int w, int h, int mx, int my, int a) {
         int ly = y + 4;
         int cardH = h - 8;
-        if (cardH < 60) return;
+        if (cardH < 60) { aboutContentH = 0; aboutAvailH = 0; aboutScroll = 0; return; }
         roundRect(g, x, ly, w, cardH, 10, CARD, BORDER | a);
 
         // 顶部：QQ 群 + Telegram 双横幅（固定，不随滚动；TG 可点击复制链接）
@@ -1194,8 +1197,8 @@ public class SfxPanelScreen extends Screen {
         // 正文区：裁剪到卡片内，超出走滚动（底部留 12px 给提示行，防压字）
         int innerTop = qy + 36;
         int innerBottom = ly + cardH - 18;
-        aboutInnerBottom = innerBottom;
         int availH = innerBottom - innerTop;
+        aboutAvailH = availH;
         g.enableScissor(x + 1, innerTop, x + w - 1, innerBottom);
 
         int ty = innerTop - (int) aboutScroll;
@@ -1214,11 +1217,11 @@ public class SfxPanelScreen extends Screen {
                 "sablefix.panel.about_readonly1", "sablefix.panel.about_readonly2");
         ty = aboutSection(g, x, w, ty, "sablefix.panel.about_cmds", a,
                 "sablefix.panel.about_cmds1", "sablefix.panel.about_cmds2");
-        aboutContentEnd = ty;
+        aboutContentH = ty - (innerTop - (int) aboutScroll);   // 去掉滚动偏移 = 纯内容高度
         g.disableScissor();
 
         // 溢出提示（画在裁剪区下方的预留带里，永不压正文）
-        if (aboutContentEnd > availH) {
+        if (aboutContentH > availH) {
             String hint = aboutScroll < 1 ? "↓" : "↑↓";
             g.drawString(font, hint, x + w - font.width(hint) - 12, ly + cardH - 13, withA(FAINT, a), false);
         }
