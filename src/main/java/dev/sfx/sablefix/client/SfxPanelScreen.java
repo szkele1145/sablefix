@@ -1176,6 +1176,10 @@ public class SfxPanelScreen extends Screen {
         roundRect(g, x + 10, qy, halfW, 28, 8, 0x2258A6FF, ACC);
         String qtext = L("sablefix.panel.about_qq");
         int qavail = halfW - 16;
+        // 五轮审计#4：0.75f 缩放地板下，en_us 长文本仍会溢出横幅（实测小窗溢出 ~88px 压到
+        // TG 横幅）。先按"0.75 倍下宽度 ≤ 可用宽"预截断（省略号收尾），再走原缩放逻辑。
+        if (font.width(qtext) * 0.75f > qavail)
+            qtext = font.plainSubstrByWidth(qtext, (int) (qavail / 0.75f) - font.width("…")) + "…";
         float qScale = font.width(qtext) * 1.1f <= qavail ? 1.1f : Math.max(0.75f, qavail / (float) font.width(qtext));
         int qw = (int) (font.width(qtext) * qScale);
         g.pose().pushPose();
@@ -1191,6 +1195,9 @@ public class SfxPanelScreen extends Screen {
         String ttext = copied ? L("sablefix.panel.about_tg_copied") : L("sablefix.panel.about_tg");
         // 字号自适应：1.1 倍放得下就放大，否则缩到正好（最低 0.75）
         int tavail = tgBtnW - 16;
+        // 五轮审计#4：同 QQ 横幅——先截断到 0.75 倍下放得下，防止两横幅文字在中缝互压
+        if (font.width(ttext) * 0.75f > tavail)
+            ttext = font.plainSubstrByWidth(ttext, (int) (tavail / 0.75f) - font.width("…")) + "…";
         float tScale = font.width(ttext) * 1.1f <= tavail ? 1.1f : Math.max(0.75f, tavail / (float) font.width(ttext));
         int tw = (int) (font.width(ttext) * tScale);
         g.pose().pushPose();
