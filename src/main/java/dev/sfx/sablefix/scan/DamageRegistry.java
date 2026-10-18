@@ -90,7 +90,7 @@ public final class DamageRegistry {
         e.lastSeenMs = now;
         if (changed) {
             Map<String, Entry> snap = snapshotLocked();   // 锁内深拷贝：写线程只读私有副本
-            WRITE_POOL.execute(() -> saveLater(snap));
+            WRITE_POOL.execute(() -> writeSnapshotSync(snap));
         }
         return isNew;
     }
@@ -99,7 +99,7 @@ public final class DamageRegistry {
     public static synchronized void clear(Kind kind, String file) {
         if (DAMAGE.remove(kind.name() + ":" + file) != null) {
             Map<String, Entry> snap = snapshotLocked();   // 同样锁内深拷贝
-            WRITE_POOL.execute(() -> saveLater(snap));
+            WRITE_POOL.execute(() -> writeSnapshotSync(snap));
         }
     }
 
@@ -233,9 +233,11 @@ public final class DamageRegistry {
         return new java.util.ArrayList<>(snapshotLocked().values());
     }
 
-    /** 异步写盘前拍好快照（审计#3），本线程执行同步原子写盘（tmp 文件 + 原子替换，不丢已登记的损伤）。
+    /** 写盘前已由调用方在类锁内拍好快照（审计#3），本方法在 WRITE_POOL 线程里执行
+     *  同步原子写盘（tmp 文件 + ATOMIC_MOVE 替换，不丢已登记的损伤）——异步的是
+     *  调度（WRITE_POOL.execute），写盘本身是同步的，故不叫 saveLater。
      *  写失败仅记日志（数据仍在内存，下次变更会再试）。 */
-    private static void saveLater(Map<String, Entry> snapshot) {
+    private static void writeSnapshotSync(Map<String, Entry> snapshot) {
         if (storePath == null) return;
         try {
             Path tmp = storePath.resolveSibling(storePath.getFileName() + ".tmp");
