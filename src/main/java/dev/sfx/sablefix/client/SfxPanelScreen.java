@@ -402,7 +402,9 @@ public class SfxPanelScreen extends Screen {
 
     @Override
     public boolean mouseReleased(double mx, double my, int button) {
-        if (tab == 5 && logDragging) {
+        // 六轮审计回归自审#1：闸不带 tab——拖拽中按数字键切页后再松开，tab 已变，
+        // 带 tab 的闸会让 logDragging 永久残留，回到日志页后一次普通拖动即触发陈旧跳变。
+        if (logDragging) {
             logDragging = false;
             return true;
         }
