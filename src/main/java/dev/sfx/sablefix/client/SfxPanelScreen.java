@@ -669,21 +669,26 @@ public class SfxPanelScreen extends Screen {
         // ---- 备份管理卡片（新功能）：修复/清理的自动备份清单，新→旧，最新 8 条 ----
         var backups = data.backups();
         if (!backups.isEmpty()) {
+            // 六轮审计#2：readonly_note 画在 ly+cardH-14，而备份区原来一路画到 ly+cardH-4，
+            // 备份行会压在这行提示上；「还有 N 条」更是没有任何位置检查——坏文件满列表时
+            // iy 已接近卡片底部，byy=iy+14 会直接把文字画到卡片外。统一以 noteY 为护栏。
+            int noteY = ly + cardH - 14;
+            int limit = noteY - 4;          // 备份区最低基线（行文本框高 12，留 4px 间隙）
             int shown2 = 0;
             int byy = iy + 14;
-            if (byy + 12 <= ly + cardH - 4) {   // 回归自审#9：标题同款边界检查（坏文件满列表时防溢出）
+            if (byy + 12 <= limit) {        // 回归自审#9：标题同款边界检查（坏文件满列表时防溢出）
                 g.drawString(font, L("sablefix.panel.backups_title"), x + 12, byy, withA(DIM, a), false);
             }
             byy += 12;
             for (var b : backups) {
-                if (byy + 12 > ly + cardH - 4 || shown2 >= 8) break;
+                if (byy + 12 > limit || shown2 >= 8) break;
                 dtr(g, b.name(), x + 28, byy, w - 170, withA(TEXT, a), false);
                 dtr(g, fmtSize(b.size()), x + w - 128, byy, 44, withA(DIM, a), false);
                 dtr(g, fmtDur(b.ageMs()), x + w - 74, byy, 62, withA(FAINT, a), false);
                 byy += 13;
                 shown2++;
             }
-            if (backups.size() > 8) {
+            if (backups.size() > 8 && byy + 12 <= limit) {
                 dtr(g, L("sablefix.panel.backups_more", backups.size() - 8), x + 28, byy, w - 60, withA(FAINT, a), false);
             }
         }
