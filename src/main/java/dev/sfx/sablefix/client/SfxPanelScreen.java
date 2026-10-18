@@ -938,6 +938,10 @@ public class SfxPanelScreen extends Screen {
         g.disableScissor();
         // 溢出提示
         int maxScroll = Math.max(0, browseContentBottom - rowsBottom);
+        // 六轮审计#3：窗口变矮 / 列表缩短时 rowsBottom 收窄，旧偏移会把列表顶部整段滚成空白。
+        // 必须放在循环之后——此处的 browseContentBottom 才是本帧累加出的真实内容高
+        // （帧首 resetFrameHits 已把它清零，提前引用只会恒得 0，把偏移永远夹成 0）。
+        if (browseScroll > maxScroll) browseScroll = maxScroll;
         if (maxScroll > 0) {
             String hint = browseScroll <= 0 ? "↓" : (browseScroll >= maxScroll ? "↑" : "↑↓");
             g.drawString(font, hint, x + w - font.width(hint) - 10, ly + cardH - 13, withA(FAINT, a), false);
@@ -1245,10 +1249,6 @@ public class SfxPanelScreen extends Screen {
         int innerBottom = ly + cardH - 18;
         int availH = innerBottom - innerTop;
         aboutAvailH = availH;
-        // 六轮审计#1：先按本帧可视高度回收上帧偏移（窗口变矮时内容会整段滚出可视区成空白），
-        // 再照常在末尾重算 aboutContentH。aboutContentH 此时仍是上帧实测值，故用它参与 clamp。
-        int maxScroll = Math.max(0, aboutContentH - availH + 4);
-        if (aboutScroll > maxScroll) aboutScroll = maxScroll;
         g.enableScissor(x + 1, innerTop, x + w - 1, innerBottom);
 
         int ty = innerTop - (int) aboutScroll;
@@ -1268,6 +1268,11 @@ public class SfxPanelScreen extends Screen {
         ty = aboutSection(g, x, w, ty, "sablefix.panel.about_cmds", a,
                 "sablefix.panel.about_cmds1", "sablefix.panel.about_cmds2");
         aboutContentH = ty - (innerTop - (int) aboutScroll);   // 去掉滚动偏移 = 纯内容高度
+        // 六轮审计#1（修正）：窗口变矮时 availH 收窄，旧偏移会把内容整段滚出可视区成空白。
+        // 回收必须放在 aboutContentH 重算之后——帧首 resetFrameHits 已把它清零，
+        // 若在 scissor 前引用只会恒得 0，把偏移永远夹成 0（About 页彻底不能滚）。
+        double maxScroll = Math.max(0, aboutContentH - availH + 4);
+        if (aboutScroll > maxScroll) aboutScroll = maxScroll;
         g.disableScissor();
 
         // 溢出提示（画在裁剪区下方的预留带里，永不压正文）
