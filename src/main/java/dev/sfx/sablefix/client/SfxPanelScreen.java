@@ -342,12 +342,16 @@ public class SfxPanelScreen extends Screen {
         if (tab == 5) {
             // 五轮审计#2：原来只 clamp 下界，logScroll 可无限增长——超上限后 start 被压到 0
             // （视口突跳回最旧日志），且 logScroll/logMax > 1 会把滑块算出轨道外。
+            // 六轮审计#1：extent 由 render 登记、早退帧被 resetFrameHits 回收为 0；
+            // 此时 max 会算成 0 把用户偏移夹没，所以先判「本帧有没有可滚内容」。
+            if (logMax <= 0) return true;
             logScroll = Math.max(0, Math.min(logMax, logScroll - dy * 3));
             return true;
         }
         if (tab == 4) {
             // GUI 审计#5：render 实测 rowsBottom 记录到字段——旧硬编码 height-44 在
             // purgeMsg 横幅显示期间（cy2+=26）与实际差 22px（恰一行行高，最后一行滚不出来）
+            if (ticketRowsBottom <= 0) return true;
             int max = Math.max(0, ticketContentBottom - ticketRowsBottom);
             ticketScroll = Math.max(0, Math.min(max, ticketScroll - (int) (dy * 24)));
             return true;
@@ -355,12 +359,14 @@ public class SfxPanelScreen extends Screen {
         if (tab == 2) {
             // 五轮审计#3：原来在此重算一份 rowsBottom 硬编码副本（曾与 render 漂移 22px，同类问题
             // 见 GUI 审计#5 的 ticket 页）。改为直接用 render 记录的实测可视底端。
+            if (browseRowsBottom <= 0) return true;
             int max = Math.max(0, browseContentBottom - browseRowsBottom);
             browseScroll = Math.max(0, Math.min(max, browseScroll - (int) (dy * 24)));
             return true;
         }
         if (tab == 6) {
             // 上限 = 内容底端 - 可视底端（render 时记录）
+            if (aboutAvailH <= 0) return true;
             double max = Math.max(0, aboutContentH - aboutAvailH + 4);
             aboutScroll = Math.max(0, Math.min(max, aboutScroll - dy * 4));
             return true;
@@ -418,6 +424,22 @@ public class SfxPanelScreen extends Screen {
         // 故意留空：背景由 render() 里的不透明 fill 提供
     }
 
+    /** 六轮审计#1：本帧开始前回收「上一帧 render 记录的命中区与视口 extent」。
+     *  各页都有早退路径（data==null / scanning / cardH<30 / tickH<30），它们只是 early return，
+     *  不会更新这些字段——于是屏幕缩小或后台扫描期间，旧坐标仍然有效：点到看不见的清理按钮、
+     *  拖到不存在的日志滚动条、或按陈旧的视口底端把列表滚出界。语义上「能点到的只有本帧真正画出来的东西」，
+     *  所以统一在分派前清零，由各页自己重新登记。注意：只回收派生的命中区/extent，绝不碰用户的滚动偏移。
+     */
+    private void resetFrameHits() {
+        purgeBtnX = -1;                     // 清理按钮：本帧没画就不能点
+        logTrackX = 0; logTrackTop = 0; logTrackH = 0; logMax = 0;   // 日志轨道/滑块的命中区
+        tgBtnX = 0; tgBtnY = 0; tgBtnW = 0; tgBtnH = 0;               // Telegram 横幅命中区
+        repairBtns.clear();                 // 体检页自绘按钮命中框
+        ticketContentBottom = 0; ticketRowsBottom = 0;               // 监视页滚动 extent
+        browseContentBottom = 0; browseRowsBottom = 0;               // 浏览页滚动 extent
+        aboutContentH = 0; aboutAvailH = 0;                          // About 页滚动 extent
+    }
+
     @Override
     public void render(GuiGraphics g, int mx, int my, float pt) {
         g.fill(0, 0, width, height, BG);
@@ -429,6 +451,7 @@ public class SfxPanelScreen extends Screen {
         drawSide(g, mx, my);
 
         int px = SIDE_X + SIDE_W + 10, py = 30, pw = width - px - 10, ph = height - 38;
+        resetFrameHits();
         switch (tab) {
             case 0 -> pageHome(g, px, py, pw, ph, mx, my, alpha);
             case 1 -> pageHealth(g, px, py, pw, ph, mx, my, alpha);
@@ -1033,6 +1056,8 @@ public class SfxPanelScreen extends Screen {
         g.disableScissor();
         ticketRowsBottom = rowsBottom;   // 滚动 clamp 用（GUI 审计#5：横幅出现时 render 侧才是真值）
         int maxScroll = Math.max(0, ticketContentBottom - rowsBottom);
+        // 六轮审计#1：窗口变矮 / purgeMsg 横幅出现时 rowsBottom 收窄，旧偏移会把顶部整段滚成空白
+        if (ticketScroll > maxScroll) ticketScroll = maxScroll;
         if (maxScroll > 0) {
             String hint = ticketScroll <= 0 ? "↓" : (ticketScroll >= maxScroll ? "↑" : "↑↓");
             g.drawString(font, hint, x + w - font.width(hint) - 10, ty + tickH - 13, withA(FAINT, a), false);
@@ -1169,7 +1194,9 @@ public class SfxPanelScreen extends Screen {
     private void pageAbout(GuiGraphics g, int x, int y, int w, int h, int mx, int my, int a) {
         int ly = y + 4;
         int cardH = h - 8;
-        if (cardH < 60) { aboutContentH = 0; aboutAvailH = 0; aboutScroll = 0; return; }
+        // 六轮审计#1：这里只回收 extent，不再顺手把 aboutScroll 清零——窗口变矮再拉回来时，
+        // 用户的滚动位置不该被吞掉；越界由下方按当帧 max 回收（resetFrameHits 已负责命中区）。
+        if (cardH < 60) { aboutContentH = 0; aboutAvailH = 0; return; }
         roundRect(g, x, ly, w, cardH, 10, CARD, BORDER | a);
 
         // 顶部：QQ 群 + Telegram 双横幅（固定，不随滚动；TG 可点击复制链接）
@@ -1213,6 +1240,10 @@ public class SfxPanelScreen extends Screen {
         int innerBottom = ly + cardH - 18;
         int availH = innerBottom - innerTop;
         aboutAvailH = availH;
+        // 六轮审计#1：先按本帧可视高度回收上帧偏移（窗口变矮时内容会整段滚出可视区成空白），
+        // 再照常在末尾重算 aboutContentH。aboutContentH 此时仍是上帧实测值，故用它参与 clamp。
+        int maxScroll = Math.max(0, aboutContentH - availH + 4);
+        if (aboutScroll > maxScroll) aboutScroll = maxScroll;
         g.enableScissor(x + 1, innerTop, x + w - 1, innerBottom);
 
         int ty = innerTop - (int) aboutScroll;
