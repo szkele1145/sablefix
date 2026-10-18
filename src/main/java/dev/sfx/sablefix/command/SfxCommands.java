@@ -580,7 +580,7 @@ public final class SfxCommands {
             src.sendSuccess(() -> tr("sablefix.cmd.backup_del_done", name), false);
             return 1;
         } catch (java.nio.file.NoSuchFileException e) {
-            src.sendFailure(tr("sablefix.cmd.backup_del_fail", "不存在: " + name));
+            src.sendFailure(tr("sablefix.cmd.backup_none"));   // 六轮审计#4：硬编码中文替换为双语键
             return 0;
         } catch (java.nio.file.FileSystemException e) {
             src.sendFailure(tr("sablefix.cmd.backup_del_locked", name));
