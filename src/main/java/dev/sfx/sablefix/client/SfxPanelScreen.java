@@ -766,7 +766,9 @@ public class SfxPanelScreen extends Screen {
         }
         if (!r.applied()) {
             purgeConfirm = true;
-            purgeMsg = L("sablefix.panel.purge_plan", r.count());
+            // 八轮审计#1：复活死键 purge_plan_gui——它带自动备份提示与二次点击引导，
+            // 当年被简化版 purge_plan 顶替后一直未被引用。确认流由 purgeConfirm 保证，文案替换无行为变化。
+            purgeMsg = L("sablefix.panel.purge_plan_gui", r.count());
             purgeMsgOk = true;
         } else {
             purgeConfirm = false;
