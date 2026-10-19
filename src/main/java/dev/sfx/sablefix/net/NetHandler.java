@@ -184,7 +184,7 @@ public final class NetHandler {
             f.writeVarInt(d.blockEntities()); f.writeVarInt(d.chunks());
         }
         f.writeVarInt(logs.size());
-        for (String line : logs) f.writeUtf(line, 384);
+        for (String line : logs) f.writeUtf(utf8Trunc(line, 384), 384);
         f.writeBoolean(p.scanning());
         f.writeVarLong(p.lastStallAgoMs);
         // 备份清单：最多 64 条（buildScan 侧已截断），防帧超限
@@ -232,5 +232,18 @@ public final class NetHandler {
     /** VarInt 长度防御：负值按 0 处理（恶意/损坏包不踢客户端） */
     private static int clampCount(int raw, int cap) {
         return Math.max(0, Math.min(raw, cap));
+    }
+
+    /** 七轮审计#3：writeUtf(s, n) 的 n 是 UTF-8 字节上限，超限抛 EncoderException → NeoForge 直接断连。
+     *  logLines 无字节上游约束（损伤摘要行拼 3 个最长 128B 文件名、ModLog 含绝对备份路径），
+     *  深目录服务器开面板即被踢。按字节安全截断（不切多字节字符中间，尾缀 …）。
+     *  注意：384B 截断与 readUtf(512) 读侧上限无关——读侧 clamp 到字符，写侧才是保护。 */
+    private static String utf8Trunc(String s, int maxBytes) {
+        if (s == null) return "";
+        byte[] b = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (b.length <= maxBytes) return s;
+        int cut = maxBytes - 1;   // 给尾缀 … 留 1B
+        while (cut > 0 && (b[cut] & 0xC0) == 0x80) cut--;   // 回退到 UTF-8 序列头
+        return new String(b, 0, cut, java.nio.charset.StandardCharsets.UTF_8) + "…";
     }
 }
