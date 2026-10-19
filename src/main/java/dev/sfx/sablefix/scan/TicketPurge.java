@@ -33,7 +33,11 @@ public final class TicketPurge {
 
     /** 解压 + 解析票据文件。 */
     public static Parsed parse(Path p) throws IOException {
-        CompoundTag root = NbtIo.readCompressed(p, NbtAccounter.unlimitedHeap());
+        // 七轮审计#7：unlimitedHeap 让 gzip 炸弹可以吃满堆（TicketScan.read 有 64MB 解压
+        // 上限防炸弹，双解析器只给一个加了配额等于没防）。64MB 配额远大于任何真实票据文件
+        // （幽灵加载点案例 2533 条 ≈ 几百 KB），超限抛 NbtAccounter 异常 → 命令/面板层按
+        // "损坏文件"提示路径走，与 TicketScan 的语义一致。
+        CompoundTag root = NbtIo.readCompressed(p, NbtAccounter.create(64L * 1024 * 1024));
         int n = 0;
         if (root.contains("data", 10)) {
             CompoundTag data = root.getCompound("data");
