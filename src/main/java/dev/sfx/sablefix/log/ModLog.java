@@ -49,4 +49,11 @@ public final class ModLog {
     public static synchronized List<Entry> snapshot() {
         return new ArrayList<>(BUF);
     }
+
+    /** Eight-round audit #2: translation entry point. Component.translatable(...).getString()
+     *  resolves by server locale. Revives the watch.* / scan.* bilingual keys that were
+     *  previously bypassed by hardcoded Chinese concatenation (English servers saw Chinese logs). */
+    public static String tr(String key, Object... args) {
+        return net.minecraft.network.chat.Component.translatable(key, args).getString();
+    }
 }

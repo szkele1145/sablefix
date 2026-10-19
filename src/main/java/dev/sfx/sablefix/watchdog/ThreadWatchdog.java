@@ -128,7 +128,9 @@ public final class ThreadWatchdog {
             ModLogHolder.dumped(stallNanos, out);
             SableFixMod.LOGGER.warn("主线程已卡 {} 秒！线程栈已写入 {}", stallNanos / 1_000_000_000.0, out);
         } catch (IOException ex) {
+            // 八轮审计#2：LOGGER 走控制台；同步进 ModLog 环形缓冲（面板日志页可见），复活死键 watch.write_fail
             SableFixMod.LOGGER.error("写线程栈失败", ex);
+            dev.sfx.sablefix.log.ModLog.error(dev.sfx.sablefix.log.ModLog.tr("sablefix.watch.write_fail"));
         }
     }
 
@@ -171,12 +173,13 @@ public final class ThreadWatchdog {
     /** 把 ModLog 依赖收进内部 holder，便于隔离与测试 */
     private static final class ModLogHolder {
         static void started() {
-            dev.sfx.sablefix.log.ModLog.info("主线程监视器启动：卡死 " + ALERT_NANOS / 1_000_000_000L
-                    + " 秒自动抓全线程栈（原版看门狗 60 秒杀服）");
+            // 八轮审计#2：复活死键 watch.started（原为硬编码中文拼接）
+            dev.sfx.sablefix.log.ModLog.info(dev.sfx.sablefix.log.ModLog.tr(
+                    "sablefix.watch.started", ALERT_NANOS / 1_000_000_000L));
         }
         static void dumped(long stallNanos, Path out) {
-            dev.sfx.sablefix.log.ModLog.error("主线程已卡 " + stallNanos / 1_000_000_000.0
-                    + " 秒！全线程栈已写入 " + out);
+            dev.sfx.sablefix.log.ModLog.error(dev.sfx.sablefix.log.ModLog.tr(
+                    "sablefix.watch.dumped", stallNanos / 1_000_000_000.0, out));
         }
     }
 }

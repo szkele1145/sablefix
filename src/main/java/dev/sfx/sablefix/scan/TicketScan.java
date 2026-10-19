@@ -31,22 +31,19 @@ public final class TicketScan {
         try {
             Path p = ticketFile(server);
             if (!Files.exists(p)) {
-                dev.sfx.sablefix.log.ModLog.info("票据体检：文件不存在（视为 0 条，正常）");
+                dev.sfx.sablefix.log.ModLog.info(dev.sfx.sablefix.log.ModLog.tr("sablefix.scan.tickets_absent"));
                 SableFixMod.LOGGER.info("票据体检：文件不存在（视为 0 条，正常）");
                 return;
             }
             TicketInfo info = read(p);
-            dev.sfx.sablefix.log.ModLog.info("票据体检完成：" + info.count() + " 条 force-load 票据，gzip/NBT 解析正常（"
-                    + info.fileSize() + " 字节）");
+            dev.sfx.sablefix.log.ModLog.info(dev.sfx.sablefix.log.ModLog.tr("sablefix.scan.tickets_ok", info.count(), info.fileSize()));
             SableFixMod.LOGGER.info("票据体检：{} 条票据，文件 {} 字节，gzip/NBT 可正常解析", info.count(), info.fileSize());
-            // 异常堆积登记（阈值 100 条：正常服务器极少超过个位数；幽灵加载点案例是 2533 条）
             if (info.count() >= 100) {
                 DamageRegistry.register(DamageRegistry.Kind.TICKETS_STUCK, p.getFileName().toString(), info.count());
             }
         } catch (Exception e) {
-            dev.sfx.sablefix.log.ModLog.error("票据体检失败：票据文件可能损坏 — " + e.getMessage());
+            dev.sfx.sablefix.log.ModLog.error(dev.sfx.sablefix.log.ModLog.tr("sablefix.scan.tickets_fail", e.getMessage()));
             SableFixMod.LOGGER.error("票据体检失败：票据文件可能损坏，用 /sablefix tickets 查看", e);
-            // 票据文件本身损坏（解不开）：登记，提示可 tickets-purge 重建
             DamageRegistry.register(DamageRegistry.Kind.TICKETS_STUCK, "<corrupted ticket file>", 1);
         }
     }

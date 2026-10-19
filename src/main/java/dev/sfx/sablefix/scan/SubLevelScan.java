@@ -35,37 +35,30 @@ public final class SubLevelScan {
     /** 启动时只读体检，问题文件逐个打日志。 */
     public static void startupScan(MinecraftServer server) {
         try {
-            dev.sfx.sablefix.log.ModLog.info("开始子层级体检…");
+            dev.sfx.sablefix.log.ModLog.info(dev.sfx.sablefix.log.ModLog.tr("sablefix.scan.sub_start"));
             Path sublevels = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
-            // 对抗审计#8（最坏路径闭环）：fix 中途外部强杀 → 文件残留只读 → Sable 写回静默失败零告警。
-            // 启动时检测残留只读：ERROR 级（fail-loud）+ 登记损伤，管理员进面板/看控制台一眼可见。
             int staleRo = warnStaleReadOnly(sublevels);
             Report r = scan(sublevels);
             long dead = r.slvlr().stream().mapToLong(SlvlIssue::deadPointers).sum();
             long bad = r.slvls().stream().mapToLong(SlvlsIssue::badEntries).sum();
             if (dead == 0 && bad == 0) {
-                dev.sfx.sablefix.log.ModLog.info("子层级体检完成：" + r.scannedSlvlr() + " 个 .slvlr + "
-                        + r.scannedSlvls() + " 个 .slvls，全部健康");
-                SableFixMod.LOGGER.info("子层级体检：扫描 {} 个 .slvlr + {} 个 .slvls，全部健康",
-                        r.scannedSlvlr(), r.scannedSlvls());
+                dev.sfx.sablefix.log.ModLog.info(dev.sfx.sablefix.log.ModLog.tr("sablefix.scan.sub_ok", r.scannedSlvlr(), r.scannedSlvls()));
+                SableFixMod.LOGGER.info("子层级体检：扫描 {} 个 .slvlr + {} 个 .slvls，全部健康", r.scannedSlvlr(), r.scannedSlvls());
             } else {
                 for (SlvlIssue i : r.slvlr()) {
-                    dev.sfx.sablefix.log.ModLog.warn(i.file().getFileName() + "：" + i.deadPointers()
-                            + " 个死指针（有效 " + i.livePointers() + "）");
+                    dev.sfx.sablefix.log.ModLog.warn(dev.sfx.sablefix.log.ModLog.tr("sablefix.scan.slvlr_dead", i.file().getFileName(), i.deadPointers(), i.livePointers()));
                     DamageRegistry.register(DamageRegistry.Kind.SUBLVL_DEAD, i.file().getFileName().toString(), i.deadPointers());
                 }
                 for (SlvlsIssue i : r.slvls()) {
-                    dev.sfx.sablefix.log.ModLog.warn(i.file().getFileName() + "：" + i.badEntries() + " 个坏条目");
+                    dev.sfx.sablefix.log.ModLog.warn(dev.sfx.sablefix.log.ModLog.tr("sablefix.scan.slvls_bad", i.file().getFileName(), i.badEntries()));
                     DamageRegistry.register(DamageRegistry.Kind.SUBLVL_DEAD, i.file().getFileName().toString(), i.badEntries());
                 }
-                dev.sfx.sablefix.log.ModLog.warn("子层级体检完成：共 " + dead + " 死指针 / " + bad + " 坏条目，用面板「存档体检」页查看");
-                SableFixMod.LOGGER.warn("子层级体检：{} 个文件共 {} 个死指针 / {} 个坏条目，用 /sablefix check 查看",
-                        r.slvlr().size() + r.slvls().size(), dead, bad);
+                dev.sfx.sablefix.log.ModLog.warn(dev.sfx.sablefix.log.ModLog.tr("sablefix.scan.sub_issues", dead, bad));
+                SableFixMod.LOGGER.warn("子层级体检：{} 个文件共 {} 个死指针 / {} 个坏条目，用 /sablefix check 查看", r.slvlr().size() + r.slvls().size(), dead, bad);
             }
         } catch (Exception e) {
-            dev.sfx.sablefix.log.ModLog.error("子层级体检失败：" + e.getMessage());
+            dev.sfx.sablefix.log.ModLog.error(dev.sfx.sablefix.log.ModLog.tr("sablefix.scan.sub_fail", e.getMessage()));
             SableFixMod.LOGGER.error("子层级体检失败（不影响服务器运行）", e);
-            // 体检本身失败（目录不可读/IO 故障）：登记一个整卷级损伤，提醒不再静默
             DamageRegistry.register(DamageRegistry.Kind.SUBLVL_DEAD, "<sublevels scan failed>", 1);
         }
     }
