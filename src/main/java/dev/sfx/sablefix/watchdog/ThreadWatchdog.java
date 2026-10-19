@@ -86,7 +86,15 @@ public final class ThreadWatchdog {
             if (stall < ALERT_NANOS) continue;
             if (System.nanoTime() - lastDumpNanos < REDUMP_NANOS && lastDumpNanos != 0) continue;
             lastDumpNanos = System.nanoTime();
-            dump(stall);
+            // 七轮审计#6：dump() 只捕获 IOException——SecurityException、dumpAllThreads 的
+            // UnsupportedOperationException 等未受检异常会从 loop() 逸出、杀死看门狗线程，
+            // 此后整个服务器生命周期内再无卡死抓栈（恰是本模组的目标场景）。补外层捕获；
+            // lastDumpNanos 已在 dump 前置位，失败同样进 5 分钟冷却，不会引发异常风暴。
+            try {
+                dump(stall);
+            } catch (Exception e) {
+                SableFixMod.LOGGER.error("看门狗抓栈异常（线程存活，继续监视）", e);
+            }
         }
     }
 
