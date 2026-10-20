@@ -516,8 +516,21 @@ public final class SfxCommands {
     }
 
     private static int dump(CommandSourceStack src) {
-        ThreadWatchdog.dump(-1L);
-        src.sendSuccess(() -> tr("sablefix.cmd.dump_ok"), false);
+        // 十轮审计#11：手动抓栈必须与自动路径同构。
+        //  ① dump() 只捕获 IOException——SecurityException 等未受检异常会从命令 handler
+        //     逸出（命令包装层兜住不崩服，但提示不可控）。
+        //  ② dumpAllThreads(true, true) 带锁信息，需要 touching 每个持锁线程——在主线程
+        //     同步执行可能阻塞在与卡死现场相关的锁上（正是抓栈想诊断的场景）。
+        //     移到后台线程：主线程只投递，完成后回主线程给提示。
+        final MinecraftServer server = src.getServer();
+        dev.sfx.sablefix.net.ServerHandlers.runAsync(() -> {
+            try {
+                ThreadWatchdog.dump(-1L);
+            } catch (Exception e) {
+                SableFixMod.LOGGER.error("手动抓栈失败（与自动路径同构的兜底）", e);
+            }
+            server.execute(() -> src.sendSuccess(() -> tr("sablefix.cmd.dump_ok"), false));
+        });
         return 0;
     }
 
