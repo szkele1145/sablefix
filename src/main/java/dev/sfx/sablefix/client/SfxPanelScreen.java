@@ -212,7 +212,8 @@ public class SfxPanelScreen extends Screen {
                 new NetHandler.PanelData.FileRow("r.-1.2.slvlr", true, 2_936_012, 64, 0),
                 new NetHandler.PanelData.FileRow("r.10.5.slvlr", true, 4_443, 3, 0),
                 new NetHandler.PanelData.FileRow("r.0.-3.slvlr", true, 1_990_656, 41, 0),
-                new NetHandler.PanelData.FileRow(L("sablefix.panel.browse_healthy", 755), true, -1, -1, 0));
+                // 十轮审计#23：汇总行与真实行同构——name 空 + live=健康数，客户端本地化渲染
+                new NetHandler.PanelData.FileRow("", true, -1, 755, 0));
         var uuids = java.util.List.of(
                 "6f2b8e1c-4a3d-4f7e-9b21-08c5d3a7e642",
                 "a91d47c2-6e8f-4b0a-8c3d-1f5e2b9a7d04",
@@ -1052,7 +1053,13 @@ public class SfxPanelScreen extends Screen {
                     //（原 roundRect = 12 次 fill/行 × 16 行 = 192 次/帧）
                     if (row % 2 == 0) g.fill(x + 8, iy - 4, x + w - 8, iy + 12, 0x0AFFFFFF);
                     boolean bad = f.dead() > 0;
-                    dtr(g, f.name(), x + 16, iy, nameMax, withA(bad ? BAD : (f.size() < 0 ? FAINT : TEXT), a), false);
+                    // 十轮审计#23：汇总行（size<0）由**客户端本地化**渲染——服务端不再预渲染
+                    // （服务端只有 en_us，预渲染会把中文客户端的汇总行变成英文）。
+                    // 服务端下发 name="" + live=健康数；这里用本地语言还原文案。
+                    String rowText = f.size() < 0
+                            ? L("sablefix.panel.browse_healthy", Math.max(0, f.live()))
+                            : f.name();
+                    dtr(g, rowText, x + 16, iy, nameMax, withA(bad ? BAD : (f.size() < 0 ? FAINT : TEXT), a), false);
                     if (f.size() >= 0) {
                         dtr(g, fmtSize(f.size()), sizeX, iy, liveX - sizeX - 8, withA(DIM, a), false);
                         if (f.live() >= 0) dtr(g, String.valueOf(f.live()), liveX, iy, stX - liveX - 8, withA(DIM, a), false);

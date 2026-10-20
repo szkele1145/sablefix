@@ -22,8 +22,10 @@ public final class NetHandler {
      *  v5: 1.5.2（lastStallAtMs → lastStallAgoMs、BackupRow.atMs → ageMs：服务端算好相对时长，
      *      绕 NTP 失步面板服的时钟偏差——载荷语义变更）
      *  v6: 日志行结构化（LogRow：key+args 客户端按玩家语言渲染；服务端 Language 只装 en_us，
-     *      服务端预渲染会把中文服的面板日志变成英文——载荷格式变更） */
-    public static final String PROTOCOL_VERSION = "6";
+     *      服务端预渲染会把中文服的面板日志变成英文——载荷格式变更）
+     *  v7: 浏览页汇总行不再服务端预渲染（name 置空 + live 传健康数，客户端本地化渲染
+     *      browse_healthy；服务端预渲染对中文客户端是英文）——字段格式未变但**语义变更** */
+    public static final String PROTOCOL_VERSION = "7";
 
     public static void register(net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent event) {
         PayloadRegistrar reg = event.registrar(PROTOCOL_VERSION);

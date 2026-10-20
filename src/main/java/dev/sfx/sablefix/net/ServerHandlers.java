@@ -216,11 +216,14 @@ public final class ServerHandlers {
             }
             int healthy = r.scannedSlvlr() + r.scannedSlvls() - r.slvlr().size() - r.slvls().size();
             if (healthy > 0) {
-                // 复用 GUI 的 browse_healthy key：服务端按服务器 locale 渲染，客户端英文界面也能读懂。
+                // 十轮审计#23：汇总行**不再在服务端预渲染**（服务端 Language 只有 en_us，
+                // .getString() 永远返回英文 → 中文客户端看到 "remaining N files all healthy"）。
+                // 改为：name 置空、live 传健康数 → 客户端用本地语言渲染 browse_healthy。
+                //  字段格式未变（FileRow 结构不动），但**语义变了** → 按既定原则 bump
+                //  PROTOCOL_VERSION（6→7）：旧客户端连新服会被 NeoForge 握手期明确拒绝，
+                //  而不是静默显示一行空白。
                 // 六审#3：汇总行置顶（原 add 尾部——files 超 512 截断保头时"全部健康"提示被静默切掉）
-                files.add(0, new NetHandler.PanelData.FileRow(
-                        net.minecraft.network.chat.Component.translatable("sablefix.panel.browse_healthy", healthy).getString(),
-                        true, -1, -1, 0));
+                files.add(0, new NetHandler.PanelData.FileRow("", true, -1, healthy, 0));
             }
 
             int ticketCount = cached.ticketCount();
