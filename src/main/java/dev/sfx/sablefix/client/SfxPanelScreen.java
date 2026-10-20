@@ -83,17 +83,33 @@ public class SfxPanelScreen extends Screen {
         return sb.toString();
     }
 
-    /** 带参翻译 + 缓存。语言代次变化时缓存整体失效（与 LANG_CACHE 同一机制）。 */
+    /** 带参翻译 + 缓存。语言代次变化时缓存整体失效（与 LANG_CACHE 同一机制）。
+     *  十轮审计#4：参数净化——TranslatableContents 构造器在非 production 环境校验参数类型
+     *  （只接受 Component/Number/Boolean/String），非法类型直接抛 IllegalArgumentException。 */
     private static String translateCached(String key, Object[] args) {
         checkLangGeneration();
-        String ck = cacheKey(key, args);
+        Object[] safe = sanitizeArgs(args);
+        String ck = cacheKey(key, safe);
         String hit = LANG_CACHE.get(ck);
         if (hit != null) return hit;
-        String rendered = Component.translatable(key, args).getString();
+        String rendered = Component.translatable(key, safe).getString();
         // 缓存上限：日志页 key 种类有限，但参数含文件名/路径时组合会变多——限制条数防无界增长
         if (LANG_CACHE.size() > 4096) LANG_CACHE.clear();
         LANG_CACHE.put(ck, rendered);
         return rendered;
+    }
+
+    /** 翻译参数净化：null → 空串，非法类型 → toString()。 */
+    private static Object[] sanitizeArgs(Object[] args) {
+        if (args == null || args.length == 0) return new Object[0];
+        Object[] safe = new Object[args.length];
+        for (int i = 0; i < args.length; i++) {
+            Object a = args[i];
+            if (a == null) safe[i] = "";
+            else if (a instanceof Component || a instanceof Number || a instanceof Boolean || a instanceof String) safe[i] = a;
+            else safe[i] = a.toString();
+        }
+        return safe;
     }
 
     /** 该 key 的 %s 槽位数（读客户端语言表；取不到按 0 处理——多余参数无副作用，少于则补 "?"）。 */
@@ -811,7 +827,8 @@ public class SfxPanelScreen extends Screen {
             repairMsgOk = true;
             var p = Minecraft.getInstance().player;
             if (p != null)
-                p.displayClientMessage(Component.translatable("sablefix.cmd.repair_done", r.slots(), r.backup()), false);
+                p.displayClientMessage(Component.translatable("sablefix.cmd.repair_done",
+                        sanitizeArgs(new Object[]{r.slots(), r.backup()})), false);
         }
         request();   // 重扫刷新列表
     }
@@ -847,7 +864,8 @@ public class SfxPanelScreen extends Screen {
             purgeMsgOk = true;
             var p = Minecraft.getInstance().player;
             if (p != null)
-                p.displayClientMessage(Component.translatable("sablefix.cmd.purge_done", r.count(), r.backup()), false);
+                p.displayClientMessage(Component.translatable("sablefix.cmd.purge_done",
+                        sanitizeArgs(new Object[]{r.count(), r.backup()})), false);
         }
         request();   // 重新拉数据（票据数应归零）
     }

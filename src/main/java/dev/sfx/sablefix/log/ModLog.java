@@ -55,14 +55,17 @@ public final class ModLog {
         // 输出移到锁外，兑现原注释的意图。
         // 九轮审计#1：List.of 对 null 元素直接 NPE——而 e.getMessage() 在无 message 的
         // 异常上就是 null（如 scan.sub_fail），会把整个日志记录炸掉。改用 Arrays.asList（允许 null）。
-        List<Object> argList = (args == null || args.length == 0) ? null : java.util.Arrays.asList(args);
+        // 十轮审计#4：参数在此入口统一净化（null→空串，非法类型→toString）——存进缓冲的
+        // args 全部是合法类型，服务端控制台渲染 / DiagReport 渲染 / 客户端下发三条路径同时受益。
+        Object[] safeArgs = sanitizeArgs(args);
+        List<Object> argList = (safeArgs.length == 0) ? null : java.util.Arrays.asList(safeArgs);
         synchronized (ModLog.class) {
             if (BUF.size() >= CAP) BUF.removeFirst();
             BUF.addLast(new Entry(LocalDateTime.now().format(FMT), level, msg, key, argList));
         }
         // 控制台输出用服务端可得的文本：可翻译条目在服务端渲染为 en_us（LanguageHook 只装 en_us）。
         String out = (key != null && !key.isEmpty())
-                ? net.minecraft.network.chat.Component.translatable(key, args).getString()
+                ? net.minecraft.network.chat.Component.translatable(key, safeArgs).getString()
                 : msg;
         final String fMsg = "[log] " + out;
         switch (level) {
@@ -70,6 +73,20 @@ public final class ModLog {
             case "ERROR" -> SableFixMod.LOGGER.error(fMsg);
             default -> SableFixMod.LOGGER.info(fMsg);
         }
+    }
+
+    /** 翻译参数净化（十轮审计#4）：null → 空串，非法类型 → toString()。 */
+    private static Object[] sanitizeArgs(Object[] args) {
+        if (args == null || args.length == 0) return new Object[0];
+        Object[] safe = new Object[args.length];
+        for (int i = 0; i < args.length; i++) {
+            Object a = args[i];
+            if (a == null) safe[i] = "";
+            else if (a instanceof net.minecraft.network.chat.Component || a instanceof Number
+                    || a instanceof Boolean || a instanceof String) safe[i] = a;
+            else safe[i] = a.toString();
+        }
+        return safe;
     }
 
     /** 快照（最新在后），供网络下发 */

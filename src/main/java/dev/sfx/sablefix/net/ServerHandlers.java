@@ -247,7 +247,9 @@ public final class ServerHandlers {
             ctx.reply(data);
         } catch (Exception e) {
             SableFixMod.LOGGER.error("面板数据生成失败", e);
-            ctx.player().displayClientMessage(Component.translatable("sablefix.panel.fail", e.getMessage()), false);
+            // 十轮审计#4：null 参数在非 production 环境被 TranslatableContents 构造器拒绝
+            ctx.player().displayClientMessage(Component.translatable("sablefix.panel.fail",
+                    e.getMessage() == null ? "" : e.getMessage()), false);
         }
     }
 

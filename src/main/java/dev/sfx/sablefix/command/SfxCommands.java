@@ -318,8 +318,23 @@ public final class SfxCommands {
         return 0;
     }
 
+    /**
+     * 十轮审计#4：统一净化翻译参数。
+     *  TranslatableContents 的构造器在**非 production 环境**会校验参数类型，只接受
+     *  Component / Number / Boolean / String——传 Path 之类会直接抛 IllegalArgumentException
+     *  （开发环境必崩）。null 参数同样不合法（生产环境渲染成 "null"，开发环境抛异常）。
+     *  这里把所有非合法参数统一转成 String，null 转空串——一处净化，全调用点受益。
+     */
     private static Component tr(String key, Object... args) {
-        return Component.translatable(key, args);
+        if (args == null || args.length == 0) return Component.translatable(key);
+        Object[] safe = new Object[args.length];
+        for (int i = 0; i < args.length; i++) {
+            Object a = args[i];
+            if (a == null) safe[i] = "";
+            else if (a instanceof Component || a instanceof Number || a instanceof Boolean || a instanceof String) safe[i] = a;
+            else safe[i] = a.toString();
+        }
+        return Component.translatable(key, safe);
     }
 
     /** 毫秒→可读时长（几秒前/几分钟前/几小时前/几天前）。服务端已减掉 now，此处只做展示。 */
@@ -436,12 +451,14 @@ public final class SfxCommands {
                         return;
                     }
                     for (SubLevelScan.SlvlIssue i : r.slvlr()) {
+                        // 十轮审计#4：参数必须是 String/Number/Boolean/Component——传 Path 会在
+                        // 非 production 环境下被 TranslatableContents 构造器直接拒（IllegalArgumentException）。
                         src.sendSuccess(() -> tr("sablefix.cmd.list_slvlr",
-                                i.file().getFileName(), i.deadPointers(), i.livePointers(), i.size()), false);
+                                i.file().getFileName().toString(), i.deadPointers(), i.livePointers(), i.size()), false);
                     }
                     for (SubLevelScan.SlvlsIssue i : r.slvls()) {
                         src.sendSuccess(() -> tr("sablefix.cmd.list_slvls",
-                                i.file().getFileName(), i.badEntries(), i.size()), false);
+                                i.file().getFileName().toString(), i.badEntries(), i.size()), false);
                     }
                 });
             } catch (Exception e) {

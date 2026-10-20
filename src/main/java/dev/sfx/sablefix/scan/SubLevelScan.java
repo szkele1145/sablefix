@@ -46,11 +46,13 @@ public final class SubLevelScan {
                 SableFixMod.LOGGER.info("子层级体检：扫描 {} 个 .slvlr + {} 个 .slvls，全部健康", r.scannedSlvlr(), r.scannedSlvls());
             } else {
                 for (SlvlIssue i : r.slvlr()) {
-                    dev.sfx.sablefix.log.ModLog.warnT("sablefix.scan.slvlr_dead", i.file().getFileName(), i.deadPointers(), i.livePointers());
+                    // 十轮审计#4：参数必须是 String/Number/Boolean/Component——传 Path 会在
+                    // 非 production 环境下被 TranslatableContents 构造器直接拒（IllegalArgumentException）。
+                    dev.sfx.sablefix.log.ModLog.warnT("sablefix.scan.slvlr_dead", i.file().getFileName().toString(), i.deadPointers(), i.livePointers());
                     DamageRegistry.register(DamageRegistry.Kind.SUBLVL_DEAD, i.file().getFileName().toString(), i.deadPointers());
                 }
                 for (SlvlsIssue i : r.slvls()) {
-                    dev.sfx.sablefix.log.ModLog.warnT("sablefix.scan.slvls_bad", i.file().getFileName(), i.badEntries());
+                    dev.sfx.sablefix.log.ModLog.warnT("sablefix.scan.slvls_bad", i.file().getFileName().toString(), i.badEntries());
                     DamageRegistry.register(DamageRegistry.Kind.SUBLVL_DEAD, i.file().getFileName().toString(), i.badEntries());
                 }
                 dev.sfx.sablefix.log.ModLog.warnT("sablefix.scan.sub_issues", dead, bad);
