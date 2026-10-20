@@ -43,6 +43,9 @@ public class SableFixMod {
     }
 
     private void onServerStarted(ServerStartedEvent event) {
+        // 十轮审计#18：静态会话状态随服务器实例重置——扫描缓存里还是上一个存档的报告
+        // （启动扫描是异步的，这期间面板会显示别的存档的文件名/损伤数）。
+        dev.sfx.sablefix.net.ServerHandlers.resetScanCache();
         ThreadWatchdog.start();
         SaveObserver.start(event.getServer());
         // 损伤登记簿：锚定/载入持久化清单（重启不丢），体检结果随后登记。

@@ -62,6 +62,18 @@ public final class ServerHandlers {
         });
     }
 
+    /** 服务器启动时清空扫描缓存（十轮审计#18）。
+     *
+     *  <p>为什么必须清：SCAN_CACHE 是 static 字段，跨服务器实例存活。同一 JVM 重开服务器
+     *  （面板服换存档、单人世界重开——MC 1.21.1 的常态）时，缓存里还是**上一个存档**的报告。
+     *  启动扫描是异步的（大存档 ~3.5s），这期间管理员打开面板会看到**别的存档**的文件名、
+     *  损伤数、票据数——甚至照着它去修当前存档里**不存在的文件**。
+     *  与 ThreadWatchdog 的会话状态重置同族：静态状态必须随服务器实例重置。 */
+    public static void resetScanCache() {
+        SCAN_CACHE.set(null);
+        lastScanFailureAt = 0L;   // 失败冷却同样属于上一个会话
+    }
+
     /** 命令 tab 补全用：从面板缓存读问题文件名（无缓存/扫描中返回空——面板一开即预热）。
      *  原实现每次按键同步全量 scan（大存档 3.5s/键）。 */
     public static java.util.List<String> cachedProblemFileNames() {

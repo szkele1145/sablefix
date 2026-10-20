@@ -47,6 +47,15 @@ public final class ThreadWatchdog {
         running = true;
         lastTickNanos = System.nanoTime();
         lastDumpNanos = 0;
+        // 十轮审计#18：会话状态一并重置。原实现重置了 lastTickNanos/lastDumpNanos，
+        // 却漏了 lastStallAtMs 与 DUMPS——两者是 **static** 字段，跨服务器实例存活。
+        // 同一 JVM 重开服务器（面板服换存档/重启是常见操作）时：
+        //  - lastStallAtMs 仍是**上一个服务器**的卡死时刻 → 面板显示「上次卡死 N 分钟前」
+        //    会指向别的存档的故障（跨存档误导性诊断信息）；
+        //  - DUMPS 是 AtomicInteger → 抓栈次数跨服累积，新服显示一个虚高的数字。
+        // 面板消费方：ServerHandlers.lastStallAtMs()/dumpCount() → PanelData。
+        lastStallAtMs = 0L;
+        DUMPS.set(0);
         thread = new Thread(ThreadWatchdog::loop, "SableFix-Watchdog");
         thread.setDaemon(true);
         thread.start();
