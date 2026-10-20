@@ -86,27 +86,52 @@ public final class DiagReport {
         }
 
         // 写入 logs/sablefix/（三轮审计#1：user.dir 解析兜底——面板服工作目录可能异常）
-        Path dir;
-        try {
-            dir = Path.of(System.getProperty("user.dir"), "logs", "sablefix");
-        } catch (Exception e) {
-            dir = Path.of("logs", "sablefix");
-        }
+        Path dir = reportDir();
         Files.createDirectories(dir);
-        Path out = dir.resolve("report-" + LocalDateTime.now()
-                .format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss")) + ".txt");
+        // 十轮审计#27：文件名原本是秒级精度 → 同一秒内生成两份报告会**互相覆盖**
+        // （与备份覆盖同族）。改用毫秒 + 碰撞后缀。
+        String base = "report-" + LocalDateTime.now()
+                .format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS"));
+        Path out = dir.resolve(base + ".txt");
+        for (int i = 1; Files.exists(out) && i < 100; i++) {
+            out = dir.resolve(base + "-" + i + ".txt");
+        }
         Files.writeString(out, sb.toString(), StandardCharsets.UTF_8);
         ModLog.info("诊断报告已生成：" + out.getFileName());
         return out;
     }
 
+    /** 报告目录：<user.dir>/logs/sablefix。user.dir 不可用时降级为相对路径。
+     *  十轮审计#27：原先 write() 有 try/catch 兜底、latestDump() 却没有 →
+     *  user.dir 异常时 latestDump() 抛 InvalidPathException（RuntimeException）→
+     *  整个 report 命令失败 → 兜底形同虚设。现在两处共用同一解析。 */
+    private static Path reportDir() {
+        try {
+            return Path.of(System.getProperty("user.dir"), "logs", "sablefix");
+        } catch (Exception e) {
+            try {
+                return Path.of("logs", "sablefix");
+            } catch (Exception e2) {
+                return Path.of(".").resolve("logs").resolve("sablefix");
+            }
+        }
+    }
+
     private static Path latestDump() {
-        Path dir = Path.of(System.getProperty("user.dir"), "logs", "sablefix");
+        Path dir = reportDir();
         Path best = null;
         long bestTime = Long.MIN_VALUE;
         try (DirectoryStream<Path> ds = Files.newDirectoryStream(dir, "threaddump-*.txt")) {
             for (Path p : ds) {
-                long t = Files.getLastModifiedTime(p).toMillis();
+                // 十轮审计#27：取修改时间可能因「文件在遍历途中被删/改名」抛 IOException
+                //  （watchdog 补抓会写新 dump）→ 原实现会让整个 report 命令失败。
+                // 单个文件取不到时间就跳过它，不影响其它候选。
+                long t;
+                try {
+                    t = Files.getLastModifiedTime(p).toMillis();
+                } catch (IOException ignored) {
+                    continue;
+                }
                 if (t > bestTime) { bestTime = t; best = p; }
             }
         } catch (IOException ignored) {}
