@@ -20,8 +20,10 @@ public final class NetHandler {
      *  v3: 1.4.0（负 VarInt clamp、日志截断方向修正——接收语义变化）
      *  v4: 1.5.0（PanelData 增 lastStallAtMs + backups 字段——载荷格式变更）
      *  v5: 1.5.2（lastStallAtMs → lastStallAgoMs、BackupRow.atMs → ageMs：服务端算好相对时长，
-     *      绕 NTP 失步面板服的时钟偏差——载荷语义变更） */
-    public static final String PROTOCOL_VERSION = "5";
+     *      绕 NTP 失步面板服的时钟偏差——载荷语义变更）
+     *  v6: 日志行结构化（LogRow：key+args 客户端按玩家语言渲染；服务端 Language 只装 en_us，
+     *      服务端预渲染会把中文服的面板日志变成英文——载荷格式变更） */
+    public static final String PROTOCOL_VERSION = "6";
 
     public static void register(net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent event) {
         PayloadRegistrar reg = event.registrar(PROTOCOL_VERSION);
@@ -68,7 +70,7 @@ public final class NetHandler {
             int ticketCount, List<String> ticketUuids,
             long lastTickGapMs, int dumpCount, long uptimeMs,
             List<DimRow> dims,
-            List<String> logLines, boolean scanning,
+            List<LogRow> logLines, boolean scanning,
             long lastStallAgoMs,
             List<BackupRow> backups) implements CustomPacketPayload {
 
@@ -76,6 +78,9 @@ public final class NetHandler {
         public record DimRow(String name, int entities, int blockEntities, int chunks) {}
         /** 备份行：文件名（含时间戳后缀）+ 字节数 + 距今毫秒（服务端算好，绕时钟偏差） */
         public record BackupRow(String name, long size, long ageMs) {}
+        /** 日志行（九轮审计#1）：key 非空=可翻译（客户端按玩家语言渲染，args 逐个下发）；
+         *  key 空=纯文本 msg 已定型。level 仅用于染色，照原样透传。 */
+        public record LogRow(String level, String msg, String key, List<String> args) {}
 
         public static final Type<PanelData> TYPE = new Type<>(id("panel_data"));
         public static final StreamCodec<FriendlyByteBuf, PanelData> CODEC = StreamCodec.of(NetHandler::writePanel, NetHandler::readPanel);
@@ -159,7 +164,7 @@ public final class NetHandler {
         List<String> uuids = p.ticketUuids.size() > maxUuids ? p.ticketUuids.subList(0, maxUuids) : p.ticketUuids;
         // logs 截断方向修正：ModLog 快照"最新在后"，取头部=丢最新留最旧（排障最需要的恰是最新）。
         // 修正为保留尾部（最新）maxLogs 条。
-        List<String> logs = p.logLines.size() > maxLogs
+        List<PanelData.LogRow> logs = p.logLines.size() > maxLogs
                 ? p.logLines.subList(p.logLines.size() - maxLogs, p.logLines.size())
                 : p.logLines;
 
@@ -184,7 +189,7 @@ public final class NetHandler {
             f.writeVarInt(d.blockEntities()); f.writeVarInt(d.chunks());
         }
         f.writeVarInt(logs.size());
-        for (String line : logs) f.writeUtf(utf8Trunc(line, 384), 384);
+        for (PanelData.LogRow r : logs) writeLogRow(f, r);
         f.writeBoolean(p.scanning());
         f.writeVarLong(p.lastStallAgoMs);
         // 备份清单：最多 64 条（buildScan 侧已截断），防帧超限
@@ -217,8 +222,8 @@ public final class NetHandler {
             dims.add(new PanelData.DimRow(f.readUtf(128), f.readVarInt(), f.readVarInt(), f.readVarInt()));
         }
         int ln = clampCount(f.readVarInt(), MAX_LOGS);
-        List<String> logs = new ArrayList<>(Math.min(ln, 200));
-        for (int i = 0; i < ln; i++) logs.add(f.readUtf(512));
+        List<PanelData.LogRow> logs = new ArrayList<>(Math.min(ln, 200));
+        for (int i = 0; i < ln; i++) logs.add(readLogRow(f));
         boolean scanning = f.readBoolean();
         long stallAgo = f.readVarLong();
         int bn = clampCount(f.readVarInt(), 64);
@@ -232,6 +237,32 @@ public final class NetHandler {
     /** VarInt 长度防御：负值按 0 处理（恶意/损坏包不踢客户端） */
     private static int clampCount(int raw, int cap) {
         return Math.max(0, Math.min(raw, cap));
+    }
+
+    /** 日志行编码（九轮审计#1）：
+     *  level(≤16B) | key(≤128B，空串=纯文本) | msg(≤384B，key 非空时为时间戳前缀) | args(逐个 ≤128B，最多 8 个)
+     *  args 统一转字符串下发——客户端按 %s 占位渲染，数字类型差异对显示无影响。 */
+    private static final int MAX_LOG_ARGS = 8;
+
+    private static void writeLogRow(FriendlyByteBuf f, PanelData.LogRow r) {
+        f.writeUtf(utf8Trunc(r.level() == null ? "" : r.level(), 16), 16);
+        String key = r.key() == null ? "" : r.key();
+        f.writeUtf(utf8Trunc(key, 128), 128);
+        f.writeUtf(utf8Trunc(r.msg() == null ? "" : r.msg(), 384), 384);
+        List<String> args = r.args() == null ? List.of() : r.args();
+        int n = Math.min(args.size(), MAX_LOG_ARGS);
+        f.writeVarInt(n);
+        for (int i = 0; i < n; i++) f.writeUtf(utf8Trunc(args.get(i), 128), 128);
+    }
+
+    private static PanelData.LogRow readLogRow(FriendlyByteBuf f) {
+        String level = f.readUtf(16);
+        String key = f.readUtf(128);
+        String msg = f.readUtf(384);
+        int an = clampCount(f.readVarInt(), MAX_LOG_ARGS);
+        List<String> args = new ArrayList<>(Math.min(an, MAX_LOG_ARGS));
+        for (int i = 0; i < an; i++) args.add(f.readUtf(128));
+        return new PanelData.LogRow(level, msg, key.isEmpty() ? null : key, args);
     }
 
     /** 七轮审计#3：writeUtf(s, n) 的 n 是 UTF-8 字节上限，超限抛 EncoderException → NeoForge 直接断连。

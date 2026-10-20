@@ -50,12 +50,19 @@ public final class DiagReport {
         }
         sb.append('\n');
 
-        // 模组日志（最近 200 条）
+        // 模组日志（最近 200 条）。九轮审计#1：可翻译条目在报告里渲染为服务端语言（en_us）——
+        // 报告是发给维护者/群里的纯文本文件，与玩家客户端语言无关。
         List<ModLog.Entry> logs = ModLog.snapshot();
         sb.append("--- 模组日志 (最近 ").append(logs.size()).append(" 条) ---\n");
         for (var e : logs) {
-            sb.append("  ").append(e.time()).append(" [").append(e.level()).append("] ")
-                    .append(e.msg()).append('\n');
+            sb.append("  ").append(e.time()).append(" [").append(e.level()).append("] ");
+            if (e.translatable()) {
+                sb.append(net.minecraft.network.chat.Component.translatable(e.key(),
+                        e.args() == null ? new Object[0] : e.args().toArray()).getString());
+            } else {
+                sb.append(e.msg());
+            }
+            sb.append('\n');
         }
         sb.append('\n');
 

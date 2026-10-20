@@ -35,29 +35,29 @@ public final class SubLevelScan {
     /** 启动时只读体检，问题文件逐个打日志。 */
     public static void startupScan(MinecraftServer server) {
         try {
-            dev.sfx.sablefix.log.ModLog.info(dev.sfx.sablefix.log.ModLog.tr("sablefix.scan.sub_start"));
+            dev.sfx.sablefix.log.ModLog.infoT("sablefix.scan.sub_start");
             Path sublevels = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
             int staleRo = warnStaleReadOnly(sublevels);
             Report r = scan(sublevels);
             long dead = r.slvlr().stream().mapToLong(SlvlIssue::deadPointers).sum();
             long bad = r.slvls().stream().mapToLong(SlvlsIssue::badEntries).sum();
             if (dead == 0 && bad == 0) {
-                dev.sfx.sablefix.log.ModLog.info(dev.sfx.sablefix.log.ModLog.tr("sablefix.scan.sub_ok", r.scannedSlvlr(), r.scannedSlvls()));
+                dev.sfx.sablefix.log.ModLog.infoT("sablefix.scan.sub_ok", r.scannedSlvlr(), r.scannedSlvls());
                 SableFixMod.LOGGER.info("子层级体检：扫描 {} 个 .slvlr + {} 个 .slvls，全部健康", r.scannedSlvlr(), r.scannedSlvls());
             } else {
                 for (SlvlIssue i : r.slvlr()) {
-                    dev.sfx.sablefix.log.ModLog.warn(dev.sfx.sablefix.log.ModLog.tr("sablefix.scan.slvlr_dead", i.file().getFileName(), i.deadPointers(), i.livePointers()));
+                    dev.sfx.sablefix.log.ModLog.warnT("sablefix.scan.slvlr_dead", i.file().getFileName(), i.deadPointers(), i.livePointers());
                     DamageRegistry.register(DamageRegistry.Kind.SUBLVL_DEAD, i.file().getFileName().toString(), i.deadPointers());
                 }
                 for (SlvlsIssue i : r.slvls()) {
-                    dev.sfx.sablefix.log.ModLog.warn(dev.sfx.sablefix.log.ModLog.tr("sablefix.scan.slvls_bad", i.file().getFileName(), i.badEntries()));
+                    dev.sfx.sablefix.log.ModLog.warnT("sablefix.scan.slvls_bad", i.file().getFileName(), i.badEntries());
                     DamageRegistry.register(DamageRegistry.Kind.SUBLVL_DEAD, i.file().getFileName().toString(), i.badEntries());
                 }
-                dev.sfx.sablefix.log.ModLog.warn(dev.sfx.sablefix.log.ModLog.tr("sablefix.scan.sub_issues", dead, bad));
+                dev.sfx.sablefix.log.ModLog.warnT("sablefix.scan.sub_issues", dead, bad);
                 SableFixMod.LOGGER.warn("子层级体检：{} 个文件共 {} 个死指针 / {} 个坏条目，用 /sablefix check 查看", r.slvlr().size() + r.slvls().size(), dead, bad);
             }
         } catch (Exception e) {
-            dev.sfx.sablefix.log.ModLog.error(dev.sfx.sablefix.log.ModLog.tr("sablefix.scan.sub_fail", e.getMessage()));
+            dev.sfx.sablefix.log.ModLog.errorT("sablefix.scan.sub_fail", e.getMessage());
             SableFixMod.LOGGER.error("子层级体检失败（不影响服务器运行）", e);
             DamageRegistry.register(DamageRegistry.Kind.SUBLVL_DEAD, "<sublevels scan failed>", 1);
         }

@@ -211,17 +211,29 @@ public final class ServerHandlers {
             long uptime = System.currentTimeMillis() - SableFixMod.START_TIME;
 
             var logSnap = dev.sfx.sablefix.log.ModLog.snapshot();
-            var logLines = new java.util.ArrayList<String>(logSnap.size());
+            var logLines = new java.util.ArrayList<NetHandler.PanelData.LogRow>(logSnap.size() + 1);
             // 损伤登记簿摘要前置：OP 开面板即见当前损伤状态（不用翻控制台）
             var dmg = dev.sfx.sablefix.scan.DamageRegistry.snapshot();
             if (!dmg.isEmpty()) {
-                logLines.add(java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss.SSS"))
-                        + " [WARN] 未处置损伤 " + dmg.size() + " 项："
-                        + dmg.stream().map(e -> e.file + "×" + e.count).limit(3)
-                                .collect(java.util.stream.Collectors.joining(", "))
-                        + (dmg.size() > 3 ? " …" : ""));
+                logLines.add(new NetHandler.PanelData.LogRow("WARN",
+                        java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss.SSS"))
+                                + " 未处置损伤 " + dmg.size() + " 项："
+                                + dmg.stream().map(e -> e.file + "×" + e.count).limit(3)
+                                        .collect(java.util.stream.Collectors.joining(", "))
+                                + (dmg.size() > 3 ? " …" : ""),
+                        null, java.util.List.of()));
             }
-            for (var e : logSnap) logLines.add(e.time() + " [" + e.level() + "] " + e.msg());
+            // 九轮审计#1：可翻译条目下发 key+args，客户端按玩家语言渲染（服务端只装 en_us，
+            // 服务端预渲染会把中文服面板日志变成英文）；纯文本条目原样透传。
+            for (var e : logSnap) {
+                if (e.translatable()) {
+                    logLines.add(new NetHandler.PanelData.LogRow(e.level(), e.time(), e.key(),
+                            e.args().stream().map(String::valueOf).toList()));
+                } else {
+                    logLines.add(new NetHandler.PanelData.LogRow(e.level(),
+                            e.time() + " " + e.msg(), null, java.util.List.of()));
+                }
+            }
 
             // 三轮审计#4/#5：服务端算好相对时长下发（lastStallAgoMs），绕 NTP 失步的客户端时钟
             long stallAt = ThreadWatchdog.lastStallAtMs();

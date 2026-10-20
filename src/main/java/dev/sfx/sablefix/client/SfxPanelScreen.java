@@ -56,6 +56,36 @@ public class SfxPanelScreen extends Screen {
         return Component.translatable(key, args).getString();
     }
 
+    /** 九轮审计#1：日志正文的安全翻译。
+     *  TranslatableContents.getArgument 在参数数量不足时抛 TranslatableFormatException——
+     *  渲染线程抛异常 = 面板崩/游戏崩。服务端下发的 key/args 不可信（恶意或损坏包），
+     *  这里按 lang 文件的 %s 槽位数裁剪参数，并把渲染异常降级为 key 本身，绝不让异常逃出。 */
+    private static String safeLogText(String key, java.util.List<String> args) {
+        try {
+            int slots = langSlots(key);
+            Object[] safe = new Object[slots];
+            for (int i = 0; i < slots; i++) {
+                safe[i] = (args != null && i < args.size() && args.get(i) != null) ? args.get(i) : "?";
+            }
+            return L(key, safe);
+        } catch (Throwable t) {
+            return key;
+        }
+    }
+
+    /** 该 key 的 %s 槽位数（读客户端语言表；取不到按 0 处理——多余参数无副作用，少于则补 "?"）。 */
+    private static int langSlots(String key) {
+        try {
+            String v = net.minecraft.locale.Language.getInstance().getOrDefault(key, "");
+            if (v == null || v.isEmpty()) return 0;
+            int n = 0;
+            for (int i = v.indexOf("%s"); i >= 0; i = v.indexOf("%s", i + 2)) n++;
+            return n;
+        } catch (Throwable t) {
+            return 0;
+        }
+    }
+
     private int tab;
     private double logScroll;
     // 日志滚动条（backlog：日志滚动夹取——原只有滚轮，无轨道/无拖拽；加轨道+滑块+按住拖拽）
@@ -102,12 +132,13 @@ public class SfxPanelScreen extends Screen {
                 new NetHandler.PanelData.DimRow("minecraft:overworld", 85, 319, 4205),
                 new NetHandler.PanelData.DimRow("minecraft:the_nether", 147, 1, 2523),
                 new NetHandler.PanelData.DimRow("minecraft:the_end", 147, 0, 2523));
+        // 九轮审计#1：日志行结构化——纯文本行走 msg（含时间戳），可翻译行走 key+args。
         var logs = java.util.List.of(
-                "16:33:42.101 [INFO] Sable Fix Core v" + SableFixMod.VERSION + " loaded",
-                "16:34:22.015 [INFO] watchdog up: auto-dump after 20s stall",
-                "16:34:23.602 [WARN] r.-4.7.slvlr: 3 dead pointers (74 live)",
-                "16:34:23.711 [INFO] tickets: 19 force-load tickets, gzip/NBT OK (707 B)",
-                "16:51:08.332 [INFO] panel request: Dev@[/127.0.0.1]");
+                new NetHandler.PanelData.LogRow("INFO", "16:33:42.101 Sable Fix Core v" + SableFixMod.VERSION + " loaded", null, java.util.List.of()),
+                new NetHandler.PanelData.LogRow("INFO", "16:34:22.015", "sablefix.watch.started", java.util.List.of("20")),
+                new NetHandler.PanelData.LogRow("WARN", "16:34:23.602", "sablefix.scan.slvlr_dead", java.util.List.of("r.-4.7.slvlr", "3", "74")),
+                new NetHandler.PanelData.LogRow("INFO", "16:34:23.711", "sablefix.scan.tickets_ok", java.util.List.of("19", "707")),
+                new NetHandler.PanelData.LogRow("INFO", "16:51:08.332 panel request: Dev@[/127.0.0.1]", null, java.util.List.of()));
         return new NetHandler.PanelData(files, 19, uuids, 41, 0, 22_320_000L, dims, logs, false, -1, java.util.List.of());
     }
 
@@ -1155,21 +1186,32 @@ public class SfxPanelScreen extends Screen {
         int iy = ly + 18;
         int shown = 0;
         for (int i = start; i < total && shown < maxRows; i++, shown++) {
-            String line = lines.get(i);
-            boolean err = line.contains("[ERROR]");
-            boolean wrn = line.contains("[WARN]");
-            int cut = line.indexOf(']');
-            if (cut > 0 && cut + 1 < line.length()) {
-                String head = line.substring(0, cut + 1);
-                // 时间戳+等级不再按 92px 硬截断（避免在 ] 附近丢字）；] 后是否带空格按实际字符定位 body。
-                dtr(g, head, x + 10, iy, w - 34, withA(FAINT, a), false);
-                int headW = Math.max(font.width(head), 1);
-                int bodyStart = (cut + 2 <= line.length() && line.charAt(cut + 1) == ' ') ? cut + 2 : cut + 1;
-                String body = line.substring(bodyStart);
-                dtr(g, body, x + 10 + headW + 2, iy, w - 24 - headW - 2, withA(err ? BAD : (wrn ? WARN : TEXT), a), false);
+            NetHandler.PanelData.LogRow row = lines.get(i);
+            boolean err = "ERROR".equals(row.level());
+            boolean wrn = "WARN".equals(row.level());
+            // 九轮审计#1：key 非空=可翻译（客户端按玩家语言渲染）；msg 此时是时间戳前缀。
+            // key 空=纯文本行（msg 已含时间戳与正文）。
+            String body;
+            String head = "";
+            if (row.key() != null) {
+                body = safeLogText(row.key(), row.args());
+                head = row.msg() + " [" + row.level() + "] ";
             } else {
-                dtr(g, line, x + 10, iy, w - 24, withA(TEXT, a), false);
+                String line = row.msg();
+                int cut = line.indexOf(']');
+                if (cut > 0 && cut + 1 < line.length() && line.charAt(0) != '[') {
+                    head = line.substring(0, cut + 1);
+                    int bodyStart = (cut + 2 <= line.length() && line.charAt(cut + 1) == ' ') ? cut + 2 : cut + 1;
+                    body = line.substring(bodyStart);
+                } else {
+                    body = line;
+                }
             }
+            // 时间戳+等级不再按 92px 硬截断（避免在 ] 附近丢字）；] 后是否带空格按实际字符定位 body。
+            dtr(g, head, x + 10, iy, w - 34, withA(FAINT, a), false);
+            int headW = Math.max(font.width(head), 1);
+            dtr(g, body, x + 10 + (head.isEmpty() ? 0 : headW + 2), iy,
+                    w - 24 - (head.isEmpty() ? 0 : headW + 2), withA(err ? BAD : (wrn ? WARN : TEXT), a), false);
             iy += rowH;
         }
         // 日志滚动条：轨道 + 滑块（backlog：日志滚动夹取）。仅在有溢出时显示。
