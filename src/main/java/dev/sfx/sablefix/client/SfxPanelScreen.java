@@ -189,12 +189,19 @@ public class SfxPanelScreen extends Screen {
 
     /** 面板关闭（含 ESC/切屏）：释放 ClientSetup.openScreen 静态引用——
      *  终局审计：clearOpenScreen 此前 0 调用（死代码），openScreen 永持已关面板 →
-     *  对象泄漏 + 服务端回包继续投递给已关 UI。removed() 覆盖 onClose/切屏/断线三条路径。 */
+     *  对象泄漏 + 服务端回包继续投递给已关 UI。removed() 覆盖 onClose/切屏/断线三条路径。
+     *  十轮审计#16：同时作废挂起的退避重试——面板关闭后，原先那个 sleep 完的线程仍会
+     *  发 PanelReq（服务端真的跑一次全量扫描，大存档 ~3.5s CPU+IO）。反复开关面板
+     *  = 服务端扫描风暴（纯浪费，且拖慢别的玩家的面板请求）。 */
     @Override
     public void removed() {
         super.removed();
+        closed = true;   // 唤醒挂起的退避重试：醒来后直接退出，不再发请求
         dev.sfx.sablefix.client.ClientSetup.clearOpenScreen(this);
     }
+
+    /** 面板是否已关闭（removed() 置位）。退避重试线程醒来后据此决定是否继续。 */
+    private volatile boolean closed;
 
     // ================= 演示数据（截图/录屏用） =================
     static NetHandler.PanelData demoData() {
@@ -347,6 +354,9 @@ public class SfxPanelScreen extends Screen {
             final long backoff = Math.min(8000, 1000L << Math.min(3, scanRetries++));
             Minecraft.getInstance().execute(() -> new java.lang.Thread(() -> {
                 try { java.lang.Thread.sleep(backoff); } catch (InterruptedException ignored) { return; }
+                // 十轮审计#16：面板已关闭就不再发请求（原先会向服务端发一个 PanelReq，
+                // 服务端真的跑一次全量扫描——大存档 ~3.5s CPU+IO，反复开关面板=扫描风暴）。
+                if (closed) return;
                 Minecraft.getInstance().execute(this::request);
             }, "SableFix-Panel-Retry").start());
         } else {
