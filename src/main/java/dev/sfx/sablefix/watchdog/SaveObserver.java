@@ -13,7 +13,7 @@ import java.util.concurrent.ConcurrentHashMap;
 /**
  * 1.3.0 ①层·第一阶段（纯观察，零注入——见 COMPATIBILITY.md 风险预案）：
  * 独立守护线程每 30s 轮询各维度 loaded chunk holder 的 saveSyncFuture 完成状态。
- * 某区块的保存 future 持续未完成超过阈值（默认 20s）→ 记入损伤登记簿 + WARN。
+ * 某区块的保存 future 持续未完成超过阈值（默认 30s，即跨过一个完整轮询周期）→ 记入损伤登记簿 + WARN。
  *
  * 为什么可行：ChunkHolder#getSaveSyncFuture / isReadyForSaving 是公开 API（javap 已核对），
  * 我们只读不写，与 c2me / chunktreefix 的 mixin 零交互面。
@@ -23,7 +23,11 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public final class SaveObserver {
     private static final long POLL_MILLIS = 30_000L;
-    private static final long PENDING_THRESHOLD_MS = 20_000L;
+    /** 十轮审计#25：登记阈值必须 >= 一个完整轮询周期。原值 20s < POLL_MILLIS(30s)
+     *  → 任何「第一轮发现 pending」的条目，第二轮（30s 后）stalledMs 必然 >= 20s → **一轮就登记**，
+     *  阈值形同虚设（实际语义变成「只要某轮看到 pending 就登记」）。取 30s = 至少跨过
+     *  一个完整轮询周期仍 pending 才登记，语义与数值一致。 */
+    private static final long PENDING_THRESHOLD_MS = POLL_MILLIS;
     /** 每维度每轮遍历实体的总上限（十轮审计#24）——原上限只统计 holder 非空者，
      *  未加载 chunk 的实体不计数 → 上限失效 → 实体量大时每 30s 全量遍历（O(N)）。 */
     private static final int MAX_ENTITY_VISITS = 4096;
@@ -46,7 +50,7 @@ public final class SaveObserver {
         thread = new Thread(SaveObserver::loop, "SableFix-SaveObserver");
         thread.setDaemon(true);
         thread.start();
-        SableFixMod.LOGGER.info("保存观察者启动（每 30s 轮询保存 future，卡住 20s 登记）");
+        SableFixMod.LOGGER.info("保存观察者启动（每 30s 轮询保存 future，跨过一轮仍卡住才登记）");
     }
 
     public static synchronized void stop() {
