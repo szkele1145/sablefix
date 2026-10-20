@@ -58,6 +58,10 @@ public final class SubLevelRepair {
         // 七轮审计#5：head 与段读合并到同一个 channel（原先两次 open，600 文件 = 1200 次）
         try (FileChannel ch = FileChannel.open(f, StandardOpenOption.READ)) {
             ByteBuffer head = readHead(ch);
+            if (!headComplete(head)) {
+                // 十轮审计#7：头部读不满 = 不可修复（未读到的槽会被当空槽跳过 → 死槽漏报）。
+                throw new IOException("header incomplete (short read), file not repairable: " + f.getFileName());
+            }
             for (int i = 0; i < 1024; i++) {
                 long ptr = Integer.toUnsignedLong(head.getInt(i * 4));
                 if (ptr == 0) continue;
@@ -81,6 +85,10 @@ public final class SubLevelRepair {
         ByteBuffer head;
         try (FileChannel ch = FileChannel.open(f, StandardOpenOption.READ)) {
             head = readHead(ch);
+            if (!headComplete(head)) {
+                // 十轮审计#7：同上，头部读不满 = 不可修复。
+                throw new IOException("header incomplete (short read), file not repairable: " + f.getFileName());
+            }
         }
         List<Integer> slots = new ArrayList<>();
         for (int i = 0; i < 1024; i++) {
@@ -137,10 +145,18 @@ public final class SubLevelRepair {
     }
 
     /** 读取 4KB 文件头。七轮审计#5：改为在调用方已打开的 channel 上读（合并 open）。
-     *  读完后 position 停在 4096，后续绝对读（ch.read(buf, pos)）不受影响。 */
+     *  读完后 position 停在 4096，后续绝对读（ch.read(buf, pos)）不受影响。
+     *  十轮审计#7：读不满时缓冲区余下部分为 0，绝对 getInt 不受 position 限制 →
+     *  未读到的槽会被当**空槽**跳过 → 死槽位漏报（损坏没被修复，修复计划不完整）。
+     *  与 SubLevelScan.checkSlvlr 的 headComplete 同构：读不满 = 不可修复，fail loud。 */
     private static ByteBuffer readHead(FileChannel ch) throws IOException {
         ByteBuffer buf = ByteBuffer.allocate(4096).order(ByteOrder.BIG_ENDIAN);
         while (buf.hasRemaining() && ch.read(buf) > 0) {}
         return buf;
+    }
+
+    /** 头部是否读满 4096 字节。 */
+    private static boolean headComplete(ByteBuffer head) {
+        return head.position() >= 4096;
     }
 }
