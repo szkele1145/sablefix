@@ -153,6 +153,12 @@ public final class DamageRegistry {
         }
         storePath = dataDir.resolve("sablefix_damage.json");
         DAMAGE.clear();
+        // 十轮审计#26：NOTIFIED 是 static → 跨服务器实例存活。同一 JVM 重开服务器
+        // （单人世界/面板服换存档是常态）时，上一轮玩家的「已提示」记录还在 →
+        // 同一个玩家（同一 UUID）在新服务器进服时**不会再收到损伤提示**
+        // （onPlayerJoin 只对未见过的 damageId 提示）→ 管理员看不到损伤。
+        // 提示状态属于**会话内**状态，随服务器实例重置。
+        NOTIFIED.clear();
         if (Files.exists(storePath)) {
             try {
                 Map<String, Entry> loaded = GSON.fromJson(Files.readString(storePath),
