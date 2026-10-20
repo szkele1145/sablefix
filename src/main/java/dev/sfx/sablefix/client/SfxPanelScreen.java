@@ -49,7 +49,25 @@ public class SfxPanelScreen extends Screen {
             checkLangGeneration();
             return LANG_CACHE.computeIfAbsent(key, k -> Component.translatable(k).getString());
         }
-        return Component.translatable(key, args).getString();
+        // 十轮审计#13：带参路径原先直译——① 无参数净化（TranslatableContents 构造器在
+        // 非 production 环境校验参数类型，非法类型抛 IllegalArgumentException → 渲染
+        // 线程崩 → 游戏崩）；② 无异常兜底（safeLogText 有 catch(Throwable)，这里没有）。
+        // 改走 translateSafe：净化 + 异常降级。
+        // 刻意**不缓存**：面板自身的带参文案参数多半是每帧变化的量（tick 间隔、滚动位置、
+        // 统计数、时长），缓存键每次都不同 → 命中率近零，且会把 4096 条上限打满后触发
+        // 全量 clear（缓存抖动 + 每帧重建）。日志行那种参数重复的场景才用 translateCached。
+        return translateSafe(key, args);
+    }
+
+    /** 带参翻译：净化参数 + 异常降级为 key 本身。**不缓存**（见 L() 的说明）。 */
+    private static String translateSafe(String key, Object[] args) {
+        try {
+            Object[] safe = sanitizeArgs(args);
+            return Component.translatable(key, safe).getString();
+        } catch (Throwable t) {
+            // 渲染线程抛异常 = 游戏崩。任何失败都降级为 key 本身。
+            return key;
+        }
     }
 
     /** 九轮审计#1：日志正文的安全翻译。
@@ -92,7 +110,15 @@ public class SfxPanelScreen extends Screen {
         String ck = cacheKey(key, safe);
         String hit = LANG_CACHE.get(ck);
         if (hit != null) return hit;
-        String rendered = Component.translatable(key, safe).getString();
+        // 十轮审计#13：本方法原先只由 safeLogText 调用（外层有 catch(Throwable)），
+        // 现在 L() 的带参路径也走这里——渲染线程抛异常 = 游戏崩，故自身兜底，
+        // 降级为 key 本身（与 safeLogText 同一策略）。
+        String rendered;
+        try {
+            rendered = Component.translatable(key, safe).getString();
+        } catch (Throwable t) {
+            return key;
+        }
         // 缓存上限：日志页 key 种类有限，但参数含文件名/路径时组合会变多——限制条数防无界增长
         if (LANG_CACHE.size() > 4096) LANG_CACHE.clear();
         LANG_CACHE.put(ck, rendered);
