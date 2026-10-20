@@ -26,7 +26,7 @@ public final class ModLog {
      * @param level INFO/WARN/ERROR
      * @param msg   已定型文本（可翻译条目时为空）
      * @param key   翻译键（可翻译条目时非空；否则为空）
-     * @param args  翻译参数（可为 null）
+     * @param args  翻译参数（**永不为 null**——无参条目是空列表；十轮审计#15）
      */
     public record Entry(String time, String level, String msg, String key, List<Object> args) {
         public boolean translatable() { return key != null && !key.isEmpty(); }
@@ -58,7 +58,12 @@ public final class ModLog {
         // 十轮审计#4：参数在此入口统一净化（null→空串，非法类型→toString）——存进缓冲的
         // args 全部是合法类型，服务端控制台渲染 / DiagReport 渲染 / 客户端下发三条路径同时受益。
         Object[] safeArgs = sanitizeArgs(args);
-        List<Object> argList = (safeArgs.length == 0) ? null : java.util.Arrays.asList(safeArgs);
+        // 十轮审计#15：无参可翻译条目（如 infoT("sablefix.scan.sub_start")）原先存 null，
+        // 消费方 ServerHandlers.buildScan 直接 e.args().stream() → NPE → **每次开面板必现**
+        // （启动体检必然写入一条无参条目）。契约改为「args 永不为 null」，无参即空列表。
+        // 用 List.of 而非 Arrays.asList：不可变（asList 支持 set()，会把缓冲里的条目改掉）。
+        // List.of 不接受 null 元素——但 sanitizeArgs 已把 null 转成 ""，此处安全。
+        List<Object> argList = List.of(safeArgs);
         synchronized (ModLog.class) {
             if (BUF.size() >= CAP) BUF.removeFirst();
             BUF.addLast(new Entry(LocalDateTime.now().format(FMT), level, msg, key, argList));

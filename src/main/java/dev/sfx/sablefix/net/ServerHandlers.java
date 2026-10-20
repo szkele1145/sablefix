@@ -227,8 +227,12 @@ public final class ServerHandlers {
             // 服务端预渲染会把中文服面板日志变成英文）；纯文本条目原样透传。
             for (var e : logSnap) {
                 if (e.translatable()) {
+                    // 十轮审计#15：args 曾可能为 null（无参可翻译条目）→ e.args().stream() NPE
+                    // → 整个面板请求失败（启动体检必写一条无参条目 → 每次开面板必现）。
+                    // ModLog 侧已改为「args 永不为 null」，这里再兜一层（纵深防御）。
+                    var ea = e.args();
                     logLines.add(new NetHandler.PanelData.LogRow(e.level(), e.time(), e.key(),
-                            e.args().stream().map(String::valueOf).toList()));
+                            ea == null ? java.util.List.of() : ea.stream().map(String::valueOf).toList()));
                 } else {
                     logLines.add(new NetHandler.PanelData.LogRow(e.level(),
                             e.time() + " " + e.msg(), null, java.util.List.of()));
