@@ -282,8 +282,24 @@ public final class NetHandler {
      *  截断越界本身没被七轮审计#3 修掉。给后缀留足 4 字节。 */
     private static String utf8Trunc(String s, int maxBytes) {
         if (s == null) return "";
+        if (maxBytes <= 0) return "";
         byte[] b = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         if (b.length <= maxBytes) return s;
+        // 十轮审计#14：maxBytes < 4 时 cut = maxBytes - 4 为负 → new String(b, 0, 负数) 抛
+        // StringIndexOutOfBoundsException。当前所有调用点 maxBytes ≥ 16（安全），但这是通用
+        // 工具——留个明确的最小值边界，别让下一个人加个 writeUtf(utf8Trunc(x, 2)) 就崩服。
+        if (maxBytes <= 4) {
+            // 只放得下尾缀（3B）甚至放不下 → 退化为按字符截断，保证字节数 ≤ maxBytes
+            int chars = Math.max(0, maxBytes - 3);
+            String t = s.length() <= chars ? s : s.substring(0, chars);
+            // substring 会劈开代理对（emoji = 2 个 char）→ 末位是高代理时去掉半个。
+            // 否则 getBytes(UTF_8) 会把落单代理替换成 '?'，字符串往返不一致。
+            if (!t.isEmpty() && Character.isHighSurrogate(t.charAt(t.length() - 1))) {
+                t = t.substring(0, t.length() - 1);
+            }
+            byte[] tb = t.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            return tb.length <= maxBytes ? t : "";
+        }
         int cut = maxBytes - 4;   // 给尾缀 …（3B）留位 + 1B 余量
         while (cut > 0 && (b[cut] & 0xC0) == 0x80) cut--;   // 回退到 UTF-8 序列头
         return new String(b, 0, cut, java.nio.charset.StandardCharsets.UTF_8) + "…";
