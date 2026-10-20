@@ -148,14 +148,32 @@ public final class SfxCommands {
                 //    若终局 lambda 没执行到（halt 前进程死）——反正进程都没了，守卫无意义。
                 server.execute(() -> {
                     src.sendSuccess(() -> tr("sablefix.cmd.fix_done", fOk, fFail, fCleared, fMasked), false);
-                    for (ServerPlayer p : server.getPlayerList().getPlayers()) {
-                        p.connection.disconnect(tr("sablefix.cmd.fix_kick"));
+                    // 十轮审计#21：**必须遍历快照**。MC 源码实证（1.21.1）：
+                    //   ServerGamePacketListenerImpl.onDisconnect → removePlayerFromWorld
+                    //     → PlayerList.remove → this.players.remove(p)   ← 改的是 ArrayList 本身
+                    //   而 getPlayers() 返回的正是这个 ArrayList（playersView 才是 unmodifiable 视图，
+                    //   但 getPlayers() 返回的是 players）。
+                    //   原代码直接 for-each 遍历 → 踢第一个玩家即抛 ConcurrentModificationException
+                    //   → endFix() 不执行（fix 永久 busy）+ server.halt(false) 不执行（**服不重启**）
+                    //   → 而此时 sublevels 已被设只读（Sable 写回被挡）→ 子层级进度存不下来。
+                    //   快照遍历 + 每玩家独立 try/catch + 终局 finally，三重兜底。
+                    try {
+                        for (ServerPlayer p : new ArrayList<>(server.getPlayerList().getPlayers())) {
+                            try {
+                                p.connection.disconnect(tr("sablefix.cmd.fix_kick"));
+                            } catch (Exception e) {
+                                SableFixMod.LOGGER.warn("fix: 踢出 {} 失败（继续踢其余玩家）", p.getName().getString(), e);
+                            }
+                        }
+                    } catch (Exception e) {
+                        SableFixMod.LOGGER.error("fix: 踢人阶段异常（仍会停服重启）", e);
+                    } finally {
+                        // P0 修复（1.5.4）：此处**不再** unmaskAll！保持只读穿过 shutdown，
+                        // 挡住 Sable 垂死写回覆盖刚清零的槽位；解锁交给 ServerStoppedEvent
+                        // （存档落盘后）+ 新进程启动时的目录兜底解锁。
+                        dev.sfx.sablefix.scan.SableWriteMask.endFix();
+                        server.halt(false);
                     }
-                    // P0 修复（1.5.4）：此处**不再** unmaskAll！保持只读穿过 shutdown，
-                    // 挡住 Sable 垂死写回覆盖刚清零的槽位；解锁交给 ServerStoppedEvent
-                    // （存档落盘后）+ 新进程启动时的目录兜底解锁。
-                    dev.sfx.sablefix.scan.SableWriteMask.endFix();
-                    server.halt(false);
                 });
             } catch (Exception e) {
                 SableFixMod.LOGGER.error("fix 失败（不重启，解除屏蔽）", e);
