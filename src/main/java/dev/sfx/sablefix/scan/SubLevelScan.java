@@ -128,6 +128,11 @@ public final class SubLevelScan {
             return checkSlvlrLegacy(f, size);
         }
         ByteBuffer head = readHead(f);
+        if (!headComplete(head)) {
+            // 十轮审计#6：头部不完整 = 损坏。读不满时缓冲区余下部分为 0，绝对 getInt 会把
+            // 未读到的槽全当空槽跳过 → 误判"健康"（静默漏报损伤）。fail loud。
+            return new SlvlIssue(f, 1, 0, size);
+        }
         int dead = 0, live = 0;
         // 批读 v2：排序指针 → 8KB 窗口分段顺序读，一次 syscall 校验段内全部记录头。
         // 旧实现每指针 1 次 4B read（900 syscall/文件）；16MB 文件实测 72ms、600 文件大存档 26s
@@ -156,10 +161,13 @@ public final class SubLevelScan {
                     ByteBuffer seg = ByteBuffer.allocate(segLen).order(ByteOrder.BIG_ENDIAN);
                     // 审计#4：positioned read 契约可短读——单次 read 会把段尾的健康指针误判
                     // 成 dead（误报 → 玩家修复 → 好记录被清零）。与 readHead 同构的补读循环。
+                    // 十轮审计#6：循环条件必须带 r > 0——FileChannel.read 规范允许返回 0，
+                    // 此时 hasRemaining 仍为真会**死循环**（本地 NTFS 不返回 0，但 NFS/SMB
+                    // 网络存储上会；面板服常用网络存储）。扫描线程一旦卡死，后续扫描永不
+                    // 完成、面板永远显示"扫描中"。与同文件 readHead() 的写法保持同构。
                     int got = 0;
-                    while (seg.hasRemaining()) {
-                        int r = ch.read(seg, segStart + got);
-                        if (r < 0) break;
+                    int r;
+                    while (seg.hasRemaining() && (r = ch.read(seg, segStart + got)) > 0) {
                         got += r;
                     }
                     if (got < 4) {
@@ -187,6 +195,10 @@ public final class SubLevelScan {
             return new SlvlsIssue(f, 1, size);
         }
         ByteBuffer head = readHead(f);
+        if (!headComplete(head)) {
+            // 十轮审计#6：同上，头部读不满 = 损坏，不当作空槽跳过。
+            return new SlvlsIssue(f, 1, size);
+        }
         int bad = 0;
         for (int i = 0; i < 1024; i++) {
             int off = ((head.get(i * 4) & 0xFF) << 16) | ((head.get(i * 4 + 1) & 0xFF) << 8) | (head.get(i * 4 + 2) & 0xFF);
@@ -202,6 +214,10 @@ public final class SubLevelScan {
      *  size > Integer.MAX_VALUE 时回绕为负 → 负 offset 抛异常/健康指针误判 dead）。 */
     static SlvlIssue checkSlvlrLegacy(Path f, long size) throws IOException {
         ByteBuffer head = readHead(f);
+        if (!headComplete(head)) {
+            // 十轮审计#6：同上，头部读不满 = 损坏。
+            return new SlvlIssue(f, 1, 0, size);
+        }
         int dead = 0, live = 0;
         try (FileChannel ch = FileChannel.open(f, StandardOpenOption.READ)) {
             for (int i = 0; i < 1024; i++) {
@@ -223,5 +239,14 @@ public final class SubLevelScan {
             while (buf.hasRemaining() && ch.read(buf) > 0) {}
         }
         return buf;
+    }
+
+    /** 头部是否读满 4096 字节。position 即已读字节数（read 每次推进 position）。
+     *  十轮审计#6：未读满时，缓冲区余下部分是 allocate 的 0——绝对 getInt 不受 position
+     *  限制，会把未读到的 1024 个槽全当**空槽**跳过 → 文件被误判为"健康"（静默漏报损伤）。
+     *  阻塞 FileChannel 读常规文件只有 EOF 才会读不满（文件本就 < 4096，已由调用方判损坏）；
+     *  存储层返回 0（网络存储）时同样读不满——统一按"头部不完整 = 损坏"处理，fail loud。 */
+    private static boolean headComplete(ByteBuffer head) {
+        return head.position() >= 4096;
     }
 }
