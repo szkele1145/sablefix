@@ -52,6 +52,11 @@ public final class SaveObserver {
             thread.interrupt();
             thread = null;
         }
+        // 十轮审计#12：原本只 PENDING.clear()（丢追踪）——已登记的 SAVE_STALLED 会留在
+        // 登记簿里，停服时 flush(3s) 把它落盘 → 下次开服继续误报（保存卡顿是**瞬时**状态，
+        //  停服瞬间一切 pending 都会随存档落盘而消失，不该跨重启保留）。
+        java.util.List<String> drop = new java.util.ArrayList<>(PENDING.keySet());
+        for (String k : drop) dropTracking(k);
         PENDING.clear();
     }
 
@@ -62,9 +67,9 @@ public final class SaveObserver {
             } catch (InterruptedException e) {
                 return;
             }
+            long now = System.nanoTime();
             MinecraftServer srv = server;
             if (srv == null) continue;
-            long now = System.nanoTime();
             for (ServerLevel level : srv.getAllLevels()) {
                 try {
                     scanLevel(level, now);
@@ -75,8 +80,30 @@ public final class SaveObserver {
             }
             // 已恢复的 pending 清除追踪（审计#5：改按 lastSeen 超时清理——旧逻辑只清
             // registered=true 条目，首次 pending 后恢复且不再被 checkHolder 覆盖的条目永久滞留）
-            PENDING.entrySet().removeIf(e ->
-                    now - e.getValue().lastSeenNanos() > POLL_MILLIS * 4);
+            // 十轮审计#12：这里原本只丢追踪不登记——超时条目若已登记过，DamageRegistry 里的
+            // SAVE_STALLED 永远留着（每 5 分钟误报 WARN + 跨重启持久化 + 玩家永久提示）。
+            // 收集后再统一 dropTracking，避免在 removeIf 谓词里动 map。
+            java.util.List<String> expired = new java.util.ArrayList<>();
+            for (java.util.Map.Entry<String, Track> en : PENDING.entrySet()) {
+                if (now - en.getValue().lastSeenNanos() > POLL_MILLIS * 4) expired.add(en.getKey());
+            }
+            for (String k : expired) dropTracking(k);
+        }
+    }
+
+    /** 丢弃追踪并同步清登记（十轮审计#12）。
+     *
+     *  <p>为什么必须成对：PENDING 是"正在追踪"的状态，DamageRegistry 是"已登记的损伤"。
+     *  两者分开删除时，任何一条"只删 PENDING 不删登记"的路径都会留下一条**永远无法清除**
+     *  的登记（SAVE_STALLED 的登记名是稳定的维度@x,z，clear 必须精确匹配）→
+     *  每 5 分钟永久误报 WARN、跨重启持久化、玩家进服永久被提示。
+     *  历史上正是这样出了三处漏清：!hasWork() 短路、lastSeen 超时清理、以及恢复路径
+     *  （恢复路径的登记名还混入了毫秒数，匹配不上，已在上一个提交改正）。 */
+    private static void dropTracking(String key) {
+        Track t = PENDING.remove(key);
+        if (t != null && t.registered()) {
+            dev.sfx.sablefix.scan.DamageRegistry.clear(
+                    dev.sfx.sablefix.scan.DamageRegistry.Kind.SAVE_STALLED, key);
         }
     }
 
@@ -86,7 +113,15 @@ public final class SaveObserver {
         // 用 hasWork() 全局短路 + 遍历 loaded chunks 的 holder）
         if (!chunkSource.chunkMap.hasWork()) {
             // 无积压：所有 pending 清零
-            PENDING.entrySet().removeIf(e -> e.getKey().startsWith(dimName(level) + "@"));
+            // 十轮审计#12：原本只丢追踪不登记 → 已登记的 SAVE_STALLED 永久残留
+            // （hasWork() 查的是光照/卸载/poi/排序器/票据，**不含 holder 的 save future**，
+            //  所以这条短路可以在 save future 仍 pending 时触发——MC 1.21.1 ChunkMap.hasWork
+            //  源码已核对）。改走 dropTracking：丢追踪与清登记成对。
+            java.util.List<String> drop = new java.util.ArrayList<>();
+            for (String k : PENDING.keySet()) {
+                if (k.startsWith(dimName(level) + "@")) drop.add(k);
+            }
+            for (String k : drop) dropTracking(k);
             return;
         }
         int checked = 0;
@@ -122,11 +157,8 @@ public final class SaveObserver {
             // 周期 30s），clear 永远静默失配 → 登记永久残留（每 5 分钟误报 WARN + 跨重启
             // 持久化 + 玩家进服永久提示）。且每次超时都会以新毫秒数再登记一条 →
             // 登记簿里堆积无数条同源记录。改为登记名 = 稳定 key，耗时写进日志。
-            var t = PENDING.remove(key);
-            if (t != null && t.registered()) {
-                dev.sfx.sablefix.scan.DamageRegistry.clear(
-                        dev.sfx.sablefix.scan.DamageRegistry.Kind.SAVE_STALLED, key);
-            }
+            // 十轮审计#12：恢复路径也统一走 dropTracking（丢追踪 + 清登记成对）。
+            dropTracking(key);
             return;
         }
         PENDING.compute(key, (k, t) -> {
