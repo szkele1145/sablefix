@@ -114,7 +114,13 @@ public final class SubLevelRepair {
         Files.createDirectories(backupDir);
         String stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS"));   // 含毫秒：同秒多次修复不互相覆盖
         Path backup = backupDir.resolve(plan.file().getFileName() + "." + stamp + ".bak");
-        Files.copy(plan.file(), backup, StandardCopyOption.REPLACE_EXISTING);
+        // 十轮审计#19：绝不覆盖已有备份（与 TicketPurge 同构）。清零是破坏性操作，
+        //  备份是恢复原文件的唯一副本——宁可因同名失败，也不静默覆盖掉上一份。
+        //  同毫秒再撞：加 -1/-2 后缀，保留全部历史备份。
+        for (int i = 1; Files.exists(backup) && i < 1000; i++) {
+            backup = backupDir.resolve(plan.file().getFileName() + "." + stamp + "-" + i + ".bak");
+        }
+        Files.copy(plan.file(), backup);   // 不带 REPLACE_EXISTING：已存在则抛 FileAlreadyExistsException
 
         // 写回前重扫：备份与写回之间文件若被并发修改（Sable 运行时），死槽位号可能已变——按计划盲写会破坏新数据。
         // 保守策略：重扫结果与计划不一致就放弃本次修复（备份保留，报错给上层）。

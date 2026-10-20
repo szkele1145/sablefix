@@ -63,9 +63,17 @@ public final class TicketPurge {
                 ? dir.getParent().resolve("backups").resolve("sablefix")
                 : Path.of("backups", "sablefix");
         Files.createDirectories(backupDir);
-        String stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"));
+        // 十轮审计#19：时间戳加毫秒，且**绝不覆盖**已有备份。
+        //  原实现只到秒（yyyyMMdd-HHmmss）且用 REPLACE_EXISTING → 同一秒内两次清理会
+        //  **覆盖掉上一次的备份**。而这份备份是恢复原票据的唯一副本（清理是破坏性操作，
+        //  误操作后没有别的退路）。SubLevelRepair 早就用毫秒精度了，这里对齐。
+        //  同毫秒再撞：加 -1/-2 后缀，保留全部历史备份。
+        String stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS"));
         Path backup = backupDir.resolve(p.getFileName() + "." + stamp + ".bak");
-        Files.copy(p, backup, StandardCopyOption.REPLACE_EXISTING);
+        for (int i = 1; Files.exists(backup) && i < 1000; i++) {
+            backup = backupDir.resolve(p.getFileName() + "." + stamp + "-" + i + ".bak");
+        }
+        Files.copy(p, backup);   // 不带 REPLACE_EXISTING：已存在则抛 FileAlreadyExistsException（宁可失败也不覆盖备份）
 
         CompoundTag root = parsed.root();
         CompoundTag data = root.getCompound("data");
