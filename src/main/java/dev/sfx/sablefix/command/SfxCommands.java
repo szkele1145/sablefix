@@ -212,8 +212,11 @@ public final class SfxCommands {
             server.execute(() -> {
                 src.sendSuccess(() -> tr("sablefix.cmd.repair_all_plan", plans.size(), totalSlots), false);
                 for (SubLevelRepair.RepairPlan p : plans) {
-                    src.sendSuccess(() -> Component.literal("  " + p.file().getFileName()
-                            + " → " + p.slots().size() + " " + tr("sablefix.cmd.repair_slots_word").getString()), false);
+                    // 十轮审计#22：原先用 tr(...).getString() 拼字符串 → **服务端 getString() 永远返回英文**
+                    // （服务端 Language 只有 en_us）→ 中文客户端看到的是 "dead slot(s)" 而不是 "个死槽"。
+                    // 改为整行 translatable → 客户端本地化 ✅（Component 对象在客户端渲染时才解析）。
+                    src.sendSuccess(() -> tr("sablefix.cmd.repair_all_file_line",
+                            p.file().getFileName().toString(), p.slots().size()), false);
                 }
                 if (!doApply) {
                     src.sendSuccess(() -> tr("sablefix.cmd.repair_all_dry_hint"), false);
@@ -517,7 +520,12 @@ public final class SfxCommands {
                 entities = level.getEntities(net.minecraft.world.level.entity.EntityTypeTest.forClass(net.minecraft.world.entity.Entity.class), box, e -> true).size();
                 blockEntities = chunk.getBlockEntities().size();
             }
-            String status = loaded ? tr("sablefix.diag.loaded").getString() : tr("sablefix.diag.not_loaded").getString();
+            // 十轮审计#22：status 改为 Component（不 .getString()）——服务端 getString() 永远返回英文
+            // （服务端 Language 只有 en_us），拼进 translatable 参数后客户端也不会再翻译它
+            // → 中文客户端看到的是 "loaded" 而不是 "已加载"。Component 作为 translatable 参数
+            // 会在**客户端渲染时递归解析** → 本地化正确 ✅（MC 标准做法）。
+            net.minecraft.network.chat.Component status = loaded
+                    ? tr("sablefix.diag.loaded") : tr("sablefix.diag.not_loaded");
             final int fe = entities, fbe = blockEntities;
             final String fDim = level.dimension().location().toString();
             final int fCx = cx, fCz = cz;

@@ -144,6 +144,7 @@
   "sablefix.cmd.repair_all_nothing": "没有需要修复的文件",
   "sablefix.cmd.repair_all_plan": "批量修复计划：%s 个文件，共 %s 个死槽：",
   "sablefix.cmd.repair_slots_word": "个死槽",
+  "sablefix.cmd.repair_all_file_line": "  %s → %s 个死槽",
   "sablefix.cmd.repair_all_dry_hint": "以上是 dry 汇总预览。确认后执行 /sablefix repair-all apply",
   "sablefix.cmd.repair_all_done": "批量修复完成：成功 %s 个文件，失败 %s 个，共清零 %s 个死槽",
   "sablefix.cmd.repair_backup_in": "备份目录：%s",
