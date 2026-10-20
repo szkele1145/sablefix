@@ -24,6 +24,9 @@ import java.util.concurrent.ConcurrentHashMap;
 public final class SaveObserver {
     private static final long POLL_MILLIS = 30_000L;
     private static final long PENDING_THRESHOLD_MS = 20_000L;
+    /** 每维度每轮遍历实体的总上限（十轮审计#24）——原上限只统计 holder 非空者，
+     *  未加载 chunk 的实体不计数 → 上限失效 → 实体量大时每 30s 全量遍历（O(N)）。 */
+    private static final int MAX_ENTITY_VISITS = 4096;
 
     /** sinceNanos=首次观察到 pending 的时刻；lastSeenNanos=最近一轮仍 pending 的时刻（审计#5 泄漏修复） */
     private record Track(long sinceNanos, boolean registered, long lastSeenNanos) {}
@@ -131,16 +134,23 @@ public final class SaveObserver {
             ChunkHolder ph = chunkSource.chunkMap.getVisibleChunkIfPresent(new net.minecraft.world.level.ChunkPos(cp).toLong());
             if (ph != null) { checkHolder(level, ph, now); }
         }
+        // 十轮审计#24：实体遍历的 64 上限原先只统计「holder 非空」的个数——
+        // 实体所在的 chunk 若未加载（holder==null）就 continue，计数不增 → 上限形同虚设，
+        // 实体量大的服务器每 30s 仍要遍历**全部**实体（getAllEntities 遍历 byId.values()，
+        //  O(N)）。改为按**总遍历数**封顶。
+        // 另：用 holder 去重集合——同一 chunk 的多个实体原本会重复 checkHolder
+        //  （重复 compute 同一 key，白白浪费）。去重后每次轮询每个 chunk 最多查一次。
+        java.util.Set<Long> seen = new java.util.HashSet<>();
+        int visited = 0;
         for (var entity : level.getAllEntities()) {
-            // 从实体位置取 holder 视角太窄；改用 chunk source 的可见集合——
-            // ServerLevel 没有公开枚举全部 holder 的 API，退而求其次：检查实体所在 chunk（覆盖活跃区）
-            // 加上玩家所在 chunk。这个覆盖面在死锁场景（save-all 全量卡住）下足够——save-all 卡住时
-            // hasWork() 长期为 true，任一活跃 chunk 的 saveSyncFuture 未完成即可确认。
+            if (++visited > MAX_ENTITY_VISITS) break;   // 总遍历上限（防 O(N) 遍历）
             var pos = entity.blockPosition();
-            ChunkHolder holder = chunkSource.chunkMap.getVisibleChunkIfPresent(new net.minecraft.world.level.ChunkPos(pos).toLong());
+            long posLong = new net.minecraft.world.level.ChunkPos(pos).toLong();
+            if (!seen.add(posLong)) continue;             // 本轮已查过该 chunk
+            ChunkHolder holder = chunkSource.chunkMap.getVisibleChunkIfPresent(posLong);
             if (holder == null) continue;
             checkHolder(level, holder, now);
-            if (++checked >= 64) break;   // 每维度每轮最多 64 个，控制开销
+            if (++checked >= 64) break;   // 每维度每轮最多 64 个已确认 holder，控制开销
         }
     }
 
