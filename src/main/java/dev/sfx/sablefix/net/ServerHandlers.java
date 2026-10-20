@@ -82,6 +82,8 @@ public final class ServerHandlers {
             try {
                 SCAN_CACHE.set(buildScan(sublevels, server));
             } catch (Exception e) {
+                // 十轮审计#17：与首扫/重扫路径一致地记失败时刻（冷却判断用）
+                lastScanFailureAt = System.currentTimeMillis();
                 SableFixMod.LOGGER.warn("补全预热扫描失败", e);
             } finally {
                 SCAN_RUNNING.set(0);
@@ -111,6 +113,8 @@ public final class ServerHandlers {
                     Path sublevels = worldDir(server).resolve("sublevels");
                     SCAN_CACHE.set(buildScan(sublevels, server));
                 } catch (Exception e) {
+                    // 十轮审计#17：与首扫/重扫/预热路径一致地记失败时刻（冷却判断用）
+                    lastScanFailureAt = System.currentTimeMillis();
                     SableFixMod.LOGGER.warn("启动扫描入缓存失败（面板打开时会重扫）", e);
                 } finally {
                     SCAN_RUNNING.set(0);
@@ -170,7 +174,18 @@ public final class ServerHandlers {
                     try {
                         SCAN_CACHE.set(buildScan(sublevels, server));
                     } catch (Exception e) {
-                        SableFixMod.LOGGER.warn("后台重扫失败（沿用旧缓存）", e);
+                        // 十轮审计#17：失败后必须推进 TTL 起点，否则缓存的 at 停在过去 →
+                        // 下一个面板请求又判定"已过期" → 再次重扫 → **无限重扫循环**
+                        // （每次 3.5s CPU，大存档持续烧 CPU；L47 注释里的失败冷却只覆盖首扫）。
+                        // 旧数据此时仍然有效（扫描失败多是文件被占用等临时问题）→ 保留旧报告，
+                        // 只把 TTL 起点重置到现在（60s 内不再重试），并记失败时刻供冷却判断。
+                        lastScanFailureAt = System.currentTimeMillis();
+                        CachedScan old = SCAN_CACHE.get();
+                        if (old != null) {
+                            SCAN_CACHE.set(new CachedScan(old.report(), old.ticketUuids(),
+                                    old.ticketCount(), System.currentTimeMillis(), old.backups()));
+                        }
+                        SableFixMod.LOGGER.warn("后台重扫失败（沿用旧缓存，60s 后重试）", e);
                     } finally {
                         SCAN_RUNNING.set(0);
                     }
