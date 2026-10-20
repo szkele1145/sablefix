@@ -90,7 +90,9 @@ public final class DamageRegistry {
         e.lastSeenMs = now;
         if (changed) {
             Map<String, Entry> snap = snapshotLocked();   // 锁内深拷贝：写线程只读私有副本
-            WRITE_POOL.execute(() -> writeSnapshotSync(snap));
+            // 十轮审计#8：路径与快照同批捕获（锁内），写线程不再读执行时的静态 storePath。
+            final Path target = storePath;
+            WRITE_POOL.execute(() -> writeSnapshotSync(snap, target));
         }
         return isNew;
     }
@@ -99,7 +101,8 @@ public final class DamageRegistry {
     public static synchronized void clear(Kind kind, String file) {
         if (DAMAGE.remove(kind.name() + ":" + file) != null) {
             Map<String, Entry> snap = snapshotLocked();   // 同样锁内深拷贝
-            WRITE_POOL.execute(() -> writeSnapshotSync(snap));
+            final Path target = storePath;                 // 十轮审计#8：路径随快照捕获
+            WRITE_POOL.execute(() -> writeSnapshotSync(snap, target));
         }
     }
 
@@ -136,8 +139,18 @@ public final class DamageRegistry {
         }
     }
 
-    /** 锚定存储路径 + 载入已有登记（重启后损伤清单不丢）。storeDir = <世界>/data（由调用方传入，Registry 不依赖 MC 类型）。 */
+    /** 锚定存储路径 + 载入已有登记（重启后损伤清单不丢）。storeDir = <世界>/data（由调用方传入，Registry 不依赖 MC 类型）。
+     *  十轮审计#8：载入前先同步排空写队列（与 flush 同构的 barrier）。单人世界/面板在同一
+     *  JVM 重开服务器时，上一轮 flush(3s) 若超时，队列里残留的旧快照任务会在本轮 init
+     *  载入之后才执行——用**旧数据覆盖**磁盘，把刚载入/刚 register 的登记回滚掉。载入前
+     *  排空队列，保证读到的就是最后写入的。无超时：启动路径多等几个写任务是安全的
+     *  （flush 超时说明磁盘本来就慢，这里的等待通常也是毫秒级）。 */
     public static synchronized void init(Path dataDir) {
+        try {
+            WRITE_POOL.submit(() -> { }).get(10, java.util.concurrent.TimeUnit.SECONDS);
+        } catch (Exception e) {
+            SableFixMod.LOGGER.warn("损伤登记簿载入前等待旧写任务超时（旧快照可能晚于载入落盘）", e);
+        }
         storePath = dataDir.resolve("sablefix_damage.json");
         DAMAGE.clear();
         if (Files.exists(storePath)) {
@@ -236,13 +249,19 @@ public final class DamageRegistry {
     /** 写盘前已由调用方在类锁内拍好快照（审计#3），本方法在 WRITE_POOL 线程里执行
      *  同步原子写盘（tmp 文件 + ATOMIC_MOVE 替换，不丢已登记的损伤）——异步的是
      *  调度（WRITE_POOL.execute），写盘本身是同步的，故不叫 saveLater。
-     *  写失败仅记日志（数据仍在内存，下次变更会再试）。 */
+     *  写失败仅记日志（数据仍在内存，下次变更会再试）。
+     *  十轮审计#8：目标路径随快照一起捕获，不读执行时的静态 storePath——面板服切存档时
+     *  storePath 改指新存档，残留旧任务若读执行时字段，会把上一存档的登记写进新存档文件。 */
     private static void writeSnapshotSync(Map<String, Entry> snapshot) {
-        if (storePath == null) return;
+        writeSnapshotSync(snapshot, storePath);
+    }
+
+    private static void writeSnapshotSync(Map<String, Entry> snapshot, Path target) {
+        if (target == null) return;
         try {
-            Path tmp = storePath.resolveSibling(storePath.getFileName() + ".tmp");
+            Path tmp = target.resolveSibling(target.getFileName() + ".tmp");
             Files.writeString(tmp, GSON.toJson(snapshot));
-            Files.move(tmp, storePath, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+            Files.move(tmp, target, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } catch (IOException e) {
             SableFixMod.LOGGER.error("损伤登记簿写盘失败", e);
         }
