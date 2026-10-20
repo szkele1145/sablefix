@@ -111,7 +111,11 @@ public final class TicketScan {
                     int n = readLen(b, p);
                     if (elemTag == 10) {
                         // 元素 compound 里有 End tag，递归吃掉即可
-                        for (int i = 0; i < n; i++) {
+                        // 十轮审计#5：n 不可信（最大 2^31-1），数据耗尽后递归空转——
+                        // 9 字节损坏文件即可让解析跑 5.6 秒（探针实测 21 亿次空调用），
+                        // 而 /sablefix tickets 与 /sablefix check 在**主线程**调 read → 卡服。
+                        // 兄弟分支（elemTag==11）已有 p.v+4<=b.length 守卫，这里补同类守卫。
+                        for (int i = 0; i < n && p.v < end; i++) {
                             readPayload(b, p, end, counter, uuids, depth + 1, true);
                         }
                     } else if (elemTag == 11) {
