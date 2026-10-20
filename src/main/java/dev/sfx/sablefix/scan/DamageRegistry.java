@@ -157,7 +157,26 @@ public final class DamageRegistry {
             try {
                 Map<String, Entry> loaded = GSON.fromJson(Files.readString(storePath),
                         new TypeToken<Map<String, Entry>>() {}.getType());
-                if (loaded != null) DAMAGE.putAll(loaded);
+                if (loaded != null) {
+                    DAMAGE.putAll(loaded);
+                    // 十轮审计#9：清理旧格式的 SAVE_STALLED 登记——旧版把「已 pending 毫秒数」
+                    // 拼进登记名，导致恢复时 clear 永远失配 → 登记永久残留（每 5 分钟误报 WARN
+                    // + 跨重启持久化 + 玩家进服永久提示）。新格式登记名是稳定的
+                    // 「维度@x,z」，不含 " (save pending " 后缀；带后缀的一律是旧格式残留，
+                    // 且保存卡顿是**瞬时**状态（恢复即应清），载入时直接丢弃。
+                    int stale = 0;
+                    for (java.util.Iterator<Map.Entry<String, Entry>> it = DAMAGE.entrySet().iterator(); it.hasNext(); ) {
+                        Map.Entry<String, Entry> en = it.next();
+                        if (Kind.SAVE_STALLED.name().equals(en.getValue().kind)
+                                && en.getKey().contains(" (save pending ")) {
+                            it.remove();
+                            stale++;
+                        }
+                    }
+                    if (stale > 0) {
+                        SableFixMod.LOGGER.info("损伤登记簿清理：{} 条旧格式保存卡顿登记（保存卡顿为瞬时状态，不跨重启保留）", stale);
+                    }
+                }
                 SableFixMod.LOGGER.info("损伤登记簿载入：{} 条未处置损伤", DAMAGE.size());
             } catch (Exception e) {
                 SableFixMod.LOGGER.error("损伤登记簿解析失败（将重建）", e);

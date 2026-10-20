@@ -117,11 +117,15 @@ public final class SaveObserver {
             // 三轮审计#3：已登记的卡顿恢复时同步清登记——原实现只清追踪，
             // DamageRegistry 的 SAVE_STALLED 无人清 → periodicWarn 每 5 分钟永久误报
             // 且持久化跨重启（登记的 file 字段就是 key+毫秒数）
+            // 十轮审计#9：登记名必须是**稳定**的 key。原实现把「已 pending 毫秒数」拼进
+            // 登记名，而清除时用的是**当前**算出的毫秒数——两者必然不同（至少差一个轮询
+            // 周期 30s），clear 永远静默失配 → 登记永久残留（每 5 分钟误报 WARN + 跨重启
+            // 持久化 + 玩家进服永久提示）。且每次超时都会以新毫秒数再登记一条 →
+            // 登记簿里堆积无数条同源记录。改为登记名 = 稳定 key，耗时写进日志。
             var t = PENDING.remove(key);
             if (t != null && t.registered()) {
                 dev.sfx.sablefix.scan.DamageRegistry.clear(
-                        dev.sfx.sablefix.scan.DamageRegistry.Kind.SAVE_STALLED,
-                        key + " (save pending " + ((now - t.sinceNanos()) / 1_000_000L) + "ms)");
+                        dev.sfx.sablefix.scan.DamageRegistry.Kind.SAVE_STALLED, key);
             }
             return;
         }
@@ -129,8 +133,8 @@ public final class SaveObserver {
             if (t == null) return new Track(now, false, now);
             long stalledMs = (now - t.sinceNanos()) / 1_000_000L;
             if (!t.registered() && stalledMs >= PENDING_THRESHOLD_MS) {
-                DamageRegistry.register(DamageRegistry.Kind.SAVE_STALLED,
-                        k + " (save pending " + stalledMs + "ms)", 1);
+                // 十轮审计#9：登记名用稳定 key（不含毫秒数）——保证恢复时能精确清除。
+                DamageRegistry.register(DamageRegistry.Kind.SAVE_STALLED, k, 1);
                 SableFixMod.LOGGER.warn("保存 future 卡住 {}：{}ms 未完成（已登记损伤）", k, stalledMs);
                 return new Track(t.sinceNanos(), true, now);
             }
