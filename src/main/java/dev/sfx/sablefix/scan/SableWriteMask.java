@@ -39,11 +39,17 @@ public final class SableWriteMask {
     /** fix 全流程守卫：运行中拒绝再次进入（对抗审计#1：双 fix 交错 = MASKED 竞态 + halt 杀 daemon 线程 = 残留只读） */
     private static final java.util.concurrent.atomic.AtomicBoolean FIX_RUNNING = new java.util.concurrent.atomic.AtomicBoolean();
 
-    /** 平台探测（二轮审计#6）：Linux 无 dos:readonly—— UnsupportedOperationException 若逃逸会让
-     *  fix 第一步就整体失败。启动时探测一次缓存：false=跳过屏蔽步骤（fix 降级为纯修复模式）。 */
-    private static volatile Boolean dosSupported;
+    /** 十轮审计#26：探测结果**按卷**缓存（键 = 卷根，如 "F:\"）。
+     *  原实现是单一全局缓存（private static volatile Boolean dosSupported）→
+     *  同一 JVM 重开服务器、且两次的 sublevels 位于**不同卷**时
+     *  （例如存档在 NTFS、另一个在 exFAT/SMB 挂载点），后一卷会沿用前一卷的结论：
+     *  沿用 true → setAttribute 逐个失败 → **报告 masked 却毫无防护**（P0 修复的温床）；
+     *  沿用 false → 本该支持的卷被降级成纯修复模式（功能退化）。
+     *  按卷分键后，两卷各测各的，结论不会互相污染。 */
+    private static final java.util.concurrent.ConcurrentHashMap<String, Boolean> DOS_BY_VOLUME =
+            new java.util.concurrent.ConcurrentHashMap<>();
 
-    /** dos:readonly 是否可用（惰性探测，结果缓存）。
+    /** dos:readonly 是否可用（惰性探测，结果按卷缓存）。
      *
      *  八轮审计#2：探测样本必须是**目标卷上的真实文件**。原实现在无样本时
      *  `Files.createTempFile()` 造探测文件——temp 在系统盘，而 sublevels 可能位于
@@ -53,11 +59,14 @@ public final class SableWriteMask {
      *  现在无真实样本时直接返回 false（无文件可屏蔽，降级纯修复模式无副作用），
      *  且**不写缓存**——否则先到的假结果会永久污染后续真实样本的探测。 */
     static boolean dosSupported(Path sample) {
-        Boolean s = dosSupported;
-        if (s != null) return s;
         if (sample == null || !Files.exists(sample)) {
             return false;   // 无真实样本：不探测、不缓存（绝不用系统 temp 跨卷猜测）
         }
+        // 卷根作为缓存键：同卷复用结论，不同卷各自探测
+        String volKey = volumeKey(sample);
+        Boolean cached = DOS_BY_VOLUME.get(volKey);
+        if (cached != null) return cached;
+        boolean s;
         try {
             Files.getAttribute(sample, "dos:readonly");
             s = true;
@@ -66,8 +75,21 @@ public final class SableWriteMask {
         } catch (Exception e) {
             s = false;   // IO 故障按不支持处理（fix 降级，宁可不屏蔽也不炸）
         }
-        dosSupported = s;
+        DOS_BY_VOLUME.put(volKey, s);
         return s;
+    }
+
+    /** 卷根标识（Windows: "F:\"；其它平台: 绝对路径前缀）。取不到就用绝对路径兜底。 */
+    private static String volumeKey(Path sample) {
+        try {
+            Path root = sample.toAbsolutePath().getRoot();
+            if (root != null) return root.toString().toLowerCase(java.util.Locale.ROOT);
+        } catch (Exception ignored) {}
+        try {
+            return sample.toAbsolutePath().toString().substring(0, 3).toLowerCase(java.util.Locale.ROOT);
+        } catch (Exception ignored) {
+            return "default";
+        }
     }
 
     /** 尝试进入 fix 流程；false=已在运行中（调用方拒绝）。 */
