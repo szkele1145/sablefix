@@ -36,17 +36,28 @@ public final class TicketScan {
                 return;
             }
             TicketInfo info = read(p);
+            // 十轮审计#10：闭环清登记——上次扫描失败（文件损坏）登记了
+            // "<corrupted ticket file>"，本次解析成功即说明文件已恢复（管理员手动替换 /
+            // 工具修复）。原实现无清除方 → 该登记永久残留，每 5 分钟误报 WARN + 玩家永久提示。
+            // 与 STALE_READONLY 的"健康时清登记"同一范式。
+            DamageRegistry.clear(DamageRegistry.Kind.TICKETS_STUCK, CORRUPTED_TICKET_FILE);
             dev.sfx.sablefix.log.ModLog.infoT("sablefix.scan.tickets_ok", info.count(), info.fileSize());
             SableFixMod.LOGGER.info("票据体检：{} 条票据，文件 {} 字节，gzip/NBT 可正常解析", info.count(), info.fileSize());
             if (info.count() >= 100) {
                 DamageRegistry.register(DamageRegistry.Kind.TICKETS_STUCK, p.getFileName().toString(), info.count());
+            } else {
+                // 条数回落到阈值以下（已清理）→ 清掉具体文件名的登记
+                DamageRegistry.clear(DamageRegistry.Kind.TICKETS_STUCK, p.getFileName().toString());
             }
         } catch (Exception e) {
             dev.sfx.sablefix.log.ModLog.errorT("sablefix.scan.tickets_fail", e.getMessage());
             SableFixMod.LOGGER.error("票据体检失败：票据文件可能损坏，用 /sablefix tickets 查看", e);
-            DamageRegistry.register(DamageRegistry.Kind.TICKETS_STUCK, "<corrupted ticket file>", 1);
+            DamageRegistry.register(DamageRegistry.Kind.TICKETS_STUCK, CORRUPTED_TICKET_FILE, 1);
         }
     }
+
+    /** 票据文件损坏时的登记名（唯一权威定义，十轮审计#10）。 */
+    public static final String CORRUPTED_TICKET_FILE = "<corrupted ticket file>";
 
     public static Path ticketFile(MinecraftServer server) {
         return server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)

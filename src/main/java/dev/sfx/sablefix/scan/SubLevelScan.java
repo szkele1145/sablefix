@@ -39,6 +39,10 @@ public final class SubLevelScan {
             Path sublevels = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
             int staleRo = warnStaleReadOnly(sublevels);
             Report r = scan(sublevels);
+            // 十轮审计#10：闭环清登记——上次扫描失败登记了 "<sublevels scan failed>"，
+            // 本次扫描成功即说明问题已消失（权限恢复/文件修复）。原实现无清除方 →
+            // 登记永久残留，每 5 分钟误报 WARN + 玩家永久提示。
+            DamageRegistry.clear(DamageRegistry.Kind.SUBLVL_DEAD, SCAN_FAILED_FILE);
             long dead = r.slvlr().stream().mapToLong(SlvlIssue::deadPointers).sum();
             long bad = r.slvls().stream().mapToLong(SlvlsIssue::badEntries).sum();
             if (dead == 0 && bad == 0) {
@@ -61,9 +65,12 @@ public final class SubLevelScan {
         } catch (Exception e) {
             dev.sfx.sablefix.log.ModLog.errorT("sablefix.scan.sub_fail", e.getMessage());
             SableFixMod.LOGGER.error("子层级体检失败（不影响服务器运行）", e);
-            DamageRegistry.register(DamageRegistry.Kind.SUBLVL_DEAD, "<sublevels scan failed>", 1);
+            DamageRegistry.register(DamageRegistry.Kind.SUBLVL_DEAD, SCAN_FAILED_FILE, 1);
         }
     }
+
+    /** 扫描失败时的登记名（唯一权威定义，十轮审计#10）。 */
+    public static final String SCAN_FAILED_FILE = "<sublevels scan failed>";
 
     /** 残留只读检测（对抗审计#8）：fix 被 external kill 打断时 unmaskAll 没跑——文件残留只读会让
      *  Sable 写回静默失败、进度全丢。启动时发现即 ERROR fail-loud + 登记损伤。
