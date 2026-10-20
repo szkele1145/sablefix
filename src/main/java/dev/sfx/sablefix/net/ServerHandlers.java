@@ -335,14 +335,22 @@ public final class ServerHandlers {
         }
     }
 
-    /** 删除单个备份文件（仅允许纯文件名，防路径遍历），不存在抛 NoSuchFileException。 */
+    /** 删除单个备份文件（仅允许 backups/sablefix 下的纯文件名，防路径遍历），不存在抛 NoSuchFileException。 */
     public static void deleteBackup(MinecraftServer server, String name) throws IOException {
-        if (name == null || name.isEmpty() || name.contains("/") || name.contains("\\")) {
+        // 十轮审计#20：原实现只黑名单 '/' 与 '\\' → **盘符相对路径可逃逸**（实测）：
+        //   Path.resolve("C:server.properties") 在 Windows 上返回 "C:server.properties"
+        //   （驱动器相对路径 = C 盘当前目录 = 服务器启动目录），不含 '/' 也不含 '\\'
+        //   → 原校验放行 → isRegularFile 为真 → **删掉了服务器的 server.properties**。
+        // 正确模式与 onRepairReq 一致：resolve → normalize → startsWith 白名单校验。
+        // 另加 ':' 黑名单（盘符与 NTFS 备用数据流 x::$DATA）、"."/".." 显式拒绝。
+        if (name == null || name.isEmpty()
+                || name.contains("/") || name.contains("\\") || name.contains(":")
+                || name.equals(".") || name.equals("..")) {
             throw new IllegalArgumentException("非法备份文件名: " + name);
         }
         Path backupDir = worldDir(server).resolve("backups").resolve("sablefix");
-        Path target = backupDir.resolve(name);
-        if (!Files.isRegularFile(target)) {
+        Path target = backupDir.resolve(name).normalize();
+        if (!target.startsWith(backupDir) || !Files.isRegularFile(target)) {
             throw new java.nio.file.NoSuchFileException(target.toString());
         }
         Files.delete(target);
