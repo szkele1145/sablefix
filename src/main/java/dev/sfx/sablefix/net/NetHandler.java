@@ -100,19 +100,22 @@ public final class NetHandler {
     public record RepairReq(String file, boolean apply) implements CustomPacketPayload {
         public static final Type<RepairReq> TYPE = new Type<>(id("repair_req"));
         public static final StreamCodec<FriendlyByteBuf, RepairReq> CODEC = StreamCodec.of(
-                (b, p) -> { b.writeUtf(p.file(), 128); b.writeBoolean(p.apply); },
+                (b, p) -> { b.writeUtf(utf8Trunc(p.file(), 128), 128); b.writeBoolean(p.apply); },
                 b -> new RepairReq(b.readUtf(128), b.readBoolean()));
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
     }
 
-    /** S2C：修复结果。ok=false 时 errKey 为 lang key（errArg 可空）；dry 时 slots=死槽数、preview=前 20 个槽号。 */
+    /** S2C：修复结果。ok=false 时 errKey 为 lang key（errArg 可空）；dry 时 slots=死槽数、preview=前 20 个槽号。
+     *  十轮审计#2：所有写侧 writeUtf 一律过 utf8Trunc——backup 是**绝对路径**（面板服深路径轻易
+     *  超 256B）、errArg 是「文件: 异常消息」，超限即 EncoderException 断连（修复成功的回包
+     *  断连会让玩家误以为修复失败）。 */
     public record RepairRes(boolean ok, boolean applied, String file, int slots, String preview,
                             String backup, String errKey, String errArg) implements CustomPacketPayload {
         public static final Type<RepairRes> TYPE = new Type<>(id("repair_res"));
         public static final StreamCodec<FriendlyByteBuf, RepairRes> CODEC = StreamCodec.of(
-                (b, p) -> { b.writeBoolean(p.ok); b.writeBoolean(p.applied); b.writeUtf(p.file, 128);
-                        b.writeVarInt(p.slots); b.writeUtf(p.preview, 256); b.writeUtf(p.backup, 256);
-                        b.writeUtf(p.errKey, 64); b.writeUtf(p.errArg, 128); },
+                (b, p) -> { b.writeBoolean(p.ok); b.writeBoolean(p.applied); b.writeUtf(utf8Trunc(p.file, 128), 128);
+                        b.writeVarInt(p.slots); b.writeUtf(utf8Trunc(p.preview, 256), 256); b.writeUtf(utf8Trunc(p.backup, 256), 256);
+                        b.writeUtf(utf8Trunc(p.errKey, 64), 64); b.writeUtf(utf8Trunc(p.errArg, 128), 128); },
                 b -> new RepairRes(b.readBoolean(), b.readBoolean(), b.readUtf(128), b.readVarInt(),
                         b.readUtf(256), b.readUtf(256), b.readUtf(64), b.readUtf(128)));
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
@@ -132,7 +135,7 @@ public final class NetHandler {
         public static final Type<PurgeRes> TYPE = new Type<>(id("purge_res"));
         public static final StreamCodec<FriendlyByteBuf, PurgeRes> CODEC = StreamCodec.of(
                 (b, p) -> { b.writeBoolean(p.ok); b.writeBoolean(p.applied); b.writeVarInt(p.count);
-                        b.writeUtf(p.backup, 256); b.writeUtf(p.errKey, 64); },
+                        b.writeUtf(utf8Trunc(p.backup, 256), 256); b.writeUtf(utf8Trunc(p.errKey, 64), 64); },
                 b -> new PurgeRes(b.readBoolean(), b.readBoolean(), b.readVarInt(),
                         b.readUtf(256), b.readUtf(64)));
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
@@ -144,7 +147,7 @@ public final class NetHandler {
         public static final Type<DiagRes> TYPE = new Type<>(id("diag_res"));
         public static final StreamCodec<FriendlyByteBuf, DiagRes> CODEC = StreamCodec.of(
                 (b, p) -> { b.writeVarInt(p.x); b.writeVarInt(p.z); b.writeBoolean(p.loaded);
-                        b.writeUtf(p.errorKey, 64); b.writeVarInt(p.entities); b.writeVarInt(p.blockEntities); b.writeUtf(p.dim, 128); },
+                        b.writeUtf(utf8Trunc(p.errorKey, 64), 64); b.writeVarInt(p.entities); b.writeVarInt(p.blockEntities); b.writeUtf(utf8Trunc(p.dim, 128), 128); },
                 b -> new DiagRes(b.readVarInt(), b.readVarInt(), b.readBoolean(), b.readUtf(64),
                         b.readVarInt(), b.readVarInt(), b.readUtf(128)));
         @Override public Type<? extends CustomPacketPayload> type() { return TYPE; }
@@ -170,12 +173,14 @@ public final class NetHandler {
 
         f.writeVarInt(files.size());
         for (PanelData.FileRow r : files) {
-            f.writeUtf(r.name(), 128); f.writeBoolean(r.slvlr());
+            // 十轮审计#2：文件名可能超 128B（Sable 子区域名含区域标题，NTFS 单名上限 255 字符），
+            // 备份名 = 原名 + 时间戳后缀更容易超 192B——写侧必须截断，否则 EncoderException 断连。
+            f.writeUtf(utf8Trunc(r.name(), 128), 128); f.writeBoolean(r.slvlr());
             f.writeVarLong(r.size()); f.writeVarInt(r.live()); f.writeVarInt(r.dead());
         }
         f.writeVarInt(p.ticketCount());
         f.writeVarInt(uuids.size());
-        for (String u : uuids) f.writeUtf(u, 64);
+        for (String u : uuids) f.writeUtf(utf8Trunc(u, 64), 64);
         f.writeVarLong(p.lastTickGapMs());
         f.writeVarInt(p.dumpCount());
         f.writeVarLong(p.uptimeMs());
@@ -185,7 +190,7 @@ public final class NetHandler {
                 ? p.dims.subList(0, MAX_DIMS) : p.dims;
         f.writeVarInt(dims.size());
         for (PanelData.DimRow d : dims) {
-            f.writeUtf(d.name(), 128); f.writeVarInt(d.entities());
+            f.writeUtf(utf8Trunc(d.name(), 128), 128); f.writeVarInt(d.entities());
             f.writeVarInt(d.blockEntities()); f.writeVarInt(d.chunks());
         }
         f.writeVarInt(logs.size());
@@ -197,7 +202,7 @@ public final class NetHandler {
                 ? p.backups.subList(0, 64) : p.backups;
         f.writeVarInt(backups.size());
         for (PanelData.BackupRow b : backups) {
-            f.writeUtf(b.name(), 192); f.writeVarLong(b.size()); f.writeVarLong(b.ageMs());
+            f.writeUtf(utf8Trunc(b.name(), 192), 192); f.writeVarLong(b.size()); f.writeVarLong(b.ageMs());
         }
     }
 
