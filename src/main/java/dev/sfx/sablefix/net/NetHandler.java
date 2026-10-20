@@ -265,15 +265,21 @@ public final class NetHandler {
         return new PanelData.LogRow(level, msg, key.isEmpty() ? null : key, args);
     }
 
+    /** 临时探针入口（十轮审计#1）：验证后删除。 */
+    static String utf8TruncForTest(String s, int maxBytes) { return utf8Trunc(s, maxBytes); }
+
     /** 七轮审计#3：writeUtf(s, n) 的 n 是 UTF-8 字节上限，超限抛 EncoderException → NeoForge 直接断连。
      *  logLines 无字节上游约束（损伤摘要行拼 3 个最长 128B 文件名、ModLog 含绝对备份路径），
      *  深目录服务器开面板即被踢。按字节安全截断（不切多字节字符中间，尾缀 …）。
-     *  注意：384B 截断与 readUtf(512) 读侧上限无关——读侧 clamp 到字符，写侧才是保护。 */
+     *  注意：384B 截断与 readUtf(512) 读侧上限无关——读侧 clamp 到字符，写侧才是保护。
+     *  十轮审计#1：尾缀 … 本身占 3 UTF-8 字节——原实现只留 1 字节（cut = maxBytes - 1），
+     *  截断结果最坏 127+3=130B，仍超 writeUtf(128) 上限 → EncoderException 断连。
+     *  截断越界本身没被七轮审计#3 修掉。给后缀留足 4 字节。 */
     private static String utf8Trunc(String s, int maxBytes) {
         if (s == null) return "";
         byte[] b = s.getBytes(java.nio.charset.StandardCharsets.UTF_8);
         if (b.length <= maxBytes) return s;
-        int cut = maxBytes - 1;   // 给尾缀 … 留 1B
+        int cut = maxBytes - 4;   // 给尾缀 …（3B）留位 + 1B 余量
         while (cut > 0 && (b[cut] & 0xC0) == 0x80) cut--;   // 回退到 UTF-8 序列头
         return new String(b, 0, cut, java.nio.charset.StandardCharsets.UTF_8) + "…";
     }
