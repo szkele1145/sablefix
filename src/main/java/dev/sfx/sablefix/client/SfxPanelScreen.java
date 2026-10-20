@@ -41,16 +41,12 @@ public class SfxPanelScreen extends Screen {
      *  解析，因此以 Minecraft.getInstance().getLanguageManager().getSelected() 作为
      *  语言代次，变更时整体失效）。 */
     private static final java.util.Map<String, String> LANG_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final java.util.Map<String, Integer> SLOTS_CACHE = new java.util.concurrent.ConcurrentHashMap<>();
     private static volatile Object langGeneration;
 
     private static String L(String key, Object... args) {
         if (args.length == 0) {
-            Object gen = net.minecraft.client.Minecraft.getInstance()
-                    .getLanguageManager().getSelected();
-            if (gen != langGeneration) {
-                LANG_CACHE.clear();
-                langGeneration = gen;
-            }
+            checkLangGeneration();
             return LANG_CACHE.computeIfAbsent(key, k -> Component.translatable(k).getString());
         }
         return Component.translatable(key, args).getString();
@@ -59,7 +55,8 @@ public class SfxPanelScreen extends Screen {
     /** 九轮审计#1：日志正文的安全翻译。
      *  TranslatableContents.getArgument 在参数数量不足时抛 TranslatableFormatException——
      *  渲染线程抛异常 = 面板崩/游戏崩。服务端下发的 key/args 不可信（恶意或损坏包），
-     *  这里按 lang 文件的 %s 槽位数裁剪参数，并把渲染异常降级为 key 本身，绝不让异常逃出。 */
+     *  这里按 lang 文件的 %s 槽位数裁剪参数，并把渲染异常降级为 key 本身，绝不让异常逃出。
+     *  槽位数与渲染结果都走缓存（见 LANG_CACHE 注释：带参渲染每帧每行一次会拖垮帧率）。 */
     private static String safeLogText(String key, java.util.List<String> args) {
         try {
             int slots = langSlots(key);
@@ -67,22 +64,65 @@ public class SfxPanelScreen extends Screen {
             for (int i = 0; i < slots; i++) {
                 safe[i] = (args != null && i < args.size() && args.get(i) != null) ? args.get(i) : "?";
             }
-            return L(key, safe);
+            return translateCached(key, safe);
         } catch (Throwable t) {
             return key;
         }
     }
 
+    /** 带参翻译的缓存键：key + 参数序列。
+     *  分隔符用 U+0001（SOH）——控制字符不会出现在文件名/路径/文案里，不会与内容混淆；
+     *  另加长度前缀，即使参数里真出现分隔符也不会产生歧义。 */
+    private static String cacheKey(String key, Object[] args) {
+        if (args.length == 0) return key;
+        StringBuilder sb = new StringBuilder(key.length() + args.length * 8);
+        sb.append(key);
+        for (Object a : args) {
+            sb.append('').append(a == null ? -1 : a.toString().length()).append(':').append(a);
+        }
+        return sb.toString();
+    }
+
+    /** 带参翻译 + 缓存。语言代次变化时缓存整体失效（与 LANG_CACHE 同一机制）。 */
+    private static String translateCached(String key, Object[] args) {
+        checkLangGeneration();
+        String ck = cacheKey(key, args);
+        String hit = LANG_CACHE.get(ck);
+        if (hit != null) return hit;
+        String rendered = Component.translatable(key, args).getString();
+        // 缓存上限：日志页 key 种类有限，但参数含文件名/路径时组合会变多——限制条数防无界增长
+        if (LANG_CACHE.size() > 4096) LANG_CACHE.clear();
+        LANG_CACHE.put(ck, rendered);
+        return rendered;
+    }
+
     /** 该 key 的 %s 槽位数（读客户端语言表；取不到按 0 处理——多余参数无副作用，少于则补 "?"）。 */
     private static int langSlots(String key) {
         try {
+            checkLangGeneration();
+            String ck = "slots:" + key;
+            Integer cached = SLOTS_CACHE.get(ck);
+            if (cached != null) return cached;
             String v = net.minecraft.locale.Language.getInstance().getOrDefault(key, "");
-            if (v == null || v.isEmpty()) return 0;
             int n = 0;
-            for (int i = v.indexOf("%s"); i >= 0; i = v.indexOf("%s", i + 2)) n++;
+            if (v != null) {
+                for (int i = v.indexOf("%s"); i >= 0; i = v.indexOf("%s", i + 2)) n++;
+            }
+            SLOTS_CACHE.put(ck, n);
             return n;
         } catch (Throwable t) {
             return 0;
+        }
+    }
+
+    /** 语言代次变化 → 缓存整体失效（无参缓存与槽位缓存同生命周期）。 */
+    private static void checkLangGeneration() {
+        Object gen = net.minecraft.client.Minecraft.getInstance()
+                .getLanguageManager().getSelected();
+        if (gen != langGeneration) {
+            LANG_CACHE.clear();
+            SLOTS_CACHE.clear();
+            langGeneration = gen;
         }
     }
 
