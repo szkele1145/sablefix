@@ -529,10 +529,19 @@ public final class SfxCommands {
                 final String u = uuids.get(i).toString();
                 src.sendSuccess(() -> Component.literal("  " + u), false);
             }
-            int hidden = uuids.size() - shown;
+            // 十轮审计#53：省略数必须按**权威条数**算，不能按 uuids.size()。
+            // 自研解析器的 uuids 可能与权威 count 不一致（票据元素是 compound 形态时一条都
+            // 收集不到，见 TicketScan#37），原实现会出现两种看不懂的输出：
+            //  ① 「30000 条」但**一条 uuid 都不列、也不提示省略**（uuids 为空 → hidden=0）；
+            //  ② 「30000 条」+ 列 20 条 +「另有 480 条未列出」→ 20+480≠30000，数字对不上。
+            int hidden = Math.max(0, t.count() - shown);
             if (hidden > 0) {
                 final int h = hidden;
                 src.sendSuccess(() -> tr("sablefix.cmd.tickets_more", h), false);
+            }
+            // 明细一条都收集不到但权威条数 > 0 → 明确说明「明细不可解析」，别让用户以为命令坏了
+            if (t.count() > 0 && uuids.isEmpty()) {
+                src.sendSuccess(() -> tr("sablefix.cmd.tickets_detail_unavailable"), false);
             }
         } catch (Exception e) {
             src.sendFailure(tr("sablefix.cmd.tickets_fail", e.getMessage()));

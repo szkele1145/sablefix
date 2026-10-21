@@ -98,6 +98,7 @@
   "sablefix.cmd.diag_fail": "区块诊断失败: %s",
   "sablefix.cmd.tickets_none": "票据文件不存在（视为 0 条，正常）",
   "sablefix.cmd.tickets_ok": "票据共 %s 条, 文件 %s 字节",
+  "sablefix.cmd.tickets_detail_unavailable": "（票据明细无法解析，只报条数；条数来自列表长度，不受影响）",
   "sablefix.cmd.tickets_fail": "票据读取失败: %s",
   "sablefix.cmd.dump_ok": "已抓全线程栈：%s（logs/sablefix/）",
   "sablefix.cmd.dump_fail": "抓栈失败——请检查服务器日志与磁盘空间",
