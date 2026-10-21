@@ -40,6 +40,24 @@ public final class ThreadWatchdog {
     private static final AtomicInteger DUMPS = new AtomicInteger();
     private static Thread thread;
 
+    /** 十轮审计#57：看门狗会话代号。stop() 只是把 running 置 false 并 interrupt，
+     *  若旧看门狗线程**正卡在 dump() 里**（写盘耗时），它仍会把这次抓栈写完：
+     *  ① DiagReport.latestDump() 按 **mtime 最新**挑栈文件 → 旧存档的卡死现场会被当成
+     *     「最新」→ 诊断报告里的线程栈是**别的存档**的（排查被误导，与 #28「残缺报告比没有更糟」同族）；
+     *  ② DUMPS / lastStallAtMs / lastDumpNanos / ModLog 全部污染新会话。
+     *  旧存档的卡死现场对**新存档**没有诊断价值（进程状态都不同），且会挤掉新会话的真实现场
+     *  → 过期会话的抓栈**整个不做**（连文件都不写）。 */
+    private static final java.util.concurrent.atomic.AtomicLong SESSION =
+            new java.util.concurrent.atomic.AtomicLong();
+    /** 看门狗线程绑定的会话代号（null = 主线程/当前会话，如 /sablefix dump 手动触发）。 */
+    private static final ThreadLocal<Long> BOUND_SESSION = new ThreadLocal<>();
+
+    /** 本次调用是否仍属当前会话：未绑定（主线程）→ 属当前；已绑定但代号过期 → 否。 */
+    private static boolean sessionAllowed() {
+        Long bound = BOUND_SESSION.get();
+        return bound == null || bound == SESSION.get();
+    }
+
     private ThreadWatchdog() {}
 
     public static synchronized void start() {
@@ -56,7 +74,16 @@ public final class ThreadWatchdog {
         // 面板消费方：ServerHandlers.lastStallAtMs()/dumpCount() → PanelData。
         lastStallAtMs = 0L;
         DUMPS.set(0);
-        thread = new Thread(ThreadWatchdog::loop, "SableFix-Watchdog");
+        // 十轮审计#57：推进会话代号并绑定本线程——旧看门狗线程的抓栈从此被判定为过期
+        final long session = SESSION.incrementAndGet();
+        thread = new Thread(() -> {
+            BOUND_SESSION.set(session);
+            try {
+                loop();
+            } finally {
+                BOUND_SESSION.remove();
+            }
+        }, "SableFix-Watchdog");
         thread.setDaemon(true);
         thread.start();
         ModLogHolder.started();
@@ -65,6 +92,10 @@ public final class ThreadWatchdog {
 
     public static synchronized void stop() {
         running = false;
+        // 十轮审计#57：推进会话代号——旧看门狗线程的循环条件据此判定过期并退出。
+        // 只靠 running=false 不够：旧线程若正卡在 dump() 写盘里，interrupt 被吞，
+        // 循环回到 while 时 running 已被下一会话 start() 置回 true → **旧线程复活**。
+        SESSION.incrementAndGet();
         if (thread != null) {
             thread.interrupt();
             thread = null;
@@ -85,7 +116,13 @@ public final class ThreadWatchdog {
     public static long lastStallAtMs() { return lastStallAtMs; }
 
     private static void loop() {
-        while (running) {
+        // 十轮审计#57：循环条件用**会话代号**而不是 static 的 running。
+        // 原实现 `while (running)`：stop() 置 false + interrupt + thread=null，而下一会话
+        // start() 又置 true → **旧线程的循环复活**（interrupt 只在 sleep 处生效；若它当时正
+        // 卡在 dump() 写盘里，interrupt 被吞掉）→ 两个看门狗线程同时跑。
+        // 且 lastDumpNanos 是 static 共享 → 旧线程抢先置位 5 分钟冷却 → 新会话的真看门狗
+        // **跳过抓栈** → 卡死现场丢失（本模组的目标场景）。
+        while (sessionAllowed()) {
             try {
                 Thread.sleep(POLL_MILLIS);
             } catch (InterruptedException e) {
@@ -111,6 +148,10 @@ public final class ThreadWatchdog {
      *  返回写入的 dump 路径；失败返回 null（十轮审计#29：原返回 void → 命令层无法区分成功/失败，
      *  磁盘满时仍然回显「抓栈成功」，而文件已被删除）。 */
     public static Path dump(long stallNanos) {
+        // 十轮审计#57：过期会话的看门狗抓栈**整个不做**——旧存档的卡死现场对新存档
+        // 没有诊断价值（进程状态都不同），写下去还会挤掉新会话的真实现场
+        // （DiagReport.latestDump 按 mtime 挑「最新」）。
+        if (!sessionAllowed()) return null;
         Path out = null;   // 十轮审计#28：提到 try 外——写入失败时需要删掉半截文件
         try {
             // 锚定游戏运行目录（服务器 CWD 可能有差异，用 MinecraftServer 运行目录兜底）
