@@ -45,7 +45,13 @@ public final class SableWriteMask {
      *  （例如存档在 NTFS、另一个在 exFAT/SMB 挂载点），后一卷会沿用前一卷的结论：
      *  沿用 true → setAttribute 逐个失败 → **报告 masked 却毫无防护**（P0 修复的温床）；
      *  沿用 false → 本该支持的卷被降级成纯修复模式（功能退化）。
-     *  按卷分键后，两卷各测各的，结论不会互相污染。 */
+     *  按卷分键后，两卷各测各的，结论不会互相污染。
+     *  十轮审计#42：卷根仍然**太粗**——Windows 上一个盘符可以挂多个卷
+     *  （F:\ 是 NTFS、F:\sub 是 exFAT/网络盘/Junction）。样本在不支持的子目录时，
+     *  按卷缓存会把「f:\ = 不支持」套到同盘**支持**的子目录上 → 那些文件被**整批跳过屏蔽**
+     *  → **P0 修复失效**（Sable 能写回刚清零的槽位）。
+     *  故缓存键改为**样本所在目录**（父目录）：同目录内共享结论（sublevels 通常全在一个目录，
+     *  一次探测覆盖全部），不同挂载点各自独立。 */
     private static final java.util.concurrent.ConcurrentHashMap<String, Boolean> DOS_BY_VOLUME =
             new java.util.concurrent.ConcurrentHashMap<>();
 
@@ -62,14 +68,19 @@ public final class SableWriteMask {
         if (sample == null || !Files.exists(sample)) {
             return false;   // 无真实样本：不探测、不缓存（绝不用系统 temp 跨卷猜测）
         }
-        // 卷根作为缓存键：同卷复用结论，不同卷各自探测
-        String volKey = volumeKey(sample);
+        // 缓存键：样本所在目录（同目录共享结论，不同挂载点各自探测）
+        String volKey = dirKey(sample);
         Boolean cached = DOS_BY_VOLUME.get(volKey);
         if (cached != null) return cached;
         boolean s;
         try {
             Files.getAttribute(sample, "dos:readonly");
-            s = true;
+            // 十轮审计#42：**读得到 ≠ 写得了**。只读挂载 / SMB 重定向 / 某些 FUSE 文件系统
+            //  可以让 getAttribute 成功而 setAttribute 失败——此时 maskAll 会得到「支持」的
+            //  假结论，继续走到 setAttribute 逐个失败 → **报告 masked 却毫无防护**（P0 失效）。
+            //  故必须实测「能不能把属性设上去」：在同目录建一个临时文件试写（同目录才能保证
+            //  落在同一个文件系统/挂载点上），成功设 true + 复位 + 删除，才算支持。
+            s = probeWritable(sample);
         } catch (UnsupportedOperationException e) {
             s = false;
         } catch (Exception e) {
@@ -79,14 +90,44 @@ public final class SableWriteMask {
         return s;
     }
 
-    /** 卷根标识（Windows: "F:\"；其它平台: 绝对路径前缀）。取不到就用绝对路径兜底。 */
-    private static String volumeKey(Path sample) {
+    /** 实测「该目录能否把 dos:readonly 设上去」。
+     *  在同目录建临时文件（只读挂载上建文件本身就会失败 → 判不支持，逻辑自洽），
+     *  设 true → 读回确认 → 复位 false → 删除。任一环节失败即判不支持。 */
+    private static boolean probeWritable(Path sample) {
+        Path dir = sample.toAbsolutePath().getParent();
+        if (dir == null) return false;
+        Path probe = null;
         try {
-            Path root = sample.toAbsolutePath().getRoot();
-            if (root != null) return root.toString().toLowerCase(java.util.Locale.ROOT);
+            probe = Files.createTempFile(dir, ".sablefix-dosprobe", ".tmp");
+            Files.setAttribute(probe, "dos:readonly", true);
+            boolean ok = Boolean.TRUE.equals(Files.getAttribute(probe, "dos:readonly"));
+            Files.setAttribute(probe, "dos:readonly", false);   // 复位，绝不留下只读文件
+            return ok;
+        } catch (Exception e) {
+            return false;
+        } finally {
+            if (probe != null) {
+                try {
+                    // 万一复位失败，先强清只读再删，避免残留只读的探测文件
+                    Files.setAttribute(probe, "dos:readonly", false);
+                } catch (Exception ignored) {}
+                try { Files.deleteIfExists(probe); } catch (Exception ignored) {}
+            }
+        }
+    }
+
+    /** 缓存键：样本所在**目录**（十轮审计#42）。
+     *  早期实现用卷根（"f:\"）——一个盘符可挂多个卷（F:\ NTFS + F:\sub exFAT/网络盘），
+     *  样本在不支持的子目录时会把「不支持」套到同盘**支持**的子目录 → 整批跳过屏蔽 → P0 失效。
+     *  改用父目录：同目录共享结论（sublevels 一般全在一个目录，一次探测覆盖全部），
+     *  不同挂载点/子目录各自独立探测。取不到父目录时退化为该文件自身路径，再退化为 "default"。 */
+    private static String dirKey(Path sample) {
+        try {
+            Path parent = sample.toAbsolutePath().getParent();
+            if (parent != null) return parent.toString().toLowerCase(java.util.Locale.ROOT);
         } catch (Exception ignored) {}
         try {
-            return sample.toAbsolutePath().toString().substring(0, 3).toLowerCase(java.util.Locale.ROOT);
+            return sample.toAbsolutePath().toString().toLowerCase(java.util.Locale.ROOT);
         } catch (Exception ignored) {
             return "default";
         }
