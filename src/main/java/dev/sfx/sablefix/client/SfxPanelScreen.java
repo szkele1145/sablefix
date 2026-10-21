@@ -1038,14 +1038,20 @@ public class SfxPanelScreen extends Screen {
         int rowsTop = ly + 20;
         int rowsBottom = ly + cardH - 6;
         browseRowsBottom = rowsBottom;
-        g.enableScissor(x + 1, rowsTop, x + w - 1, rowsBottom);
-        int iy = rowsTop - browseScroll;
-        int row = 0;
-        browseContentBottom = rowsTop;
+        // 十轮审计#51：clamp 提前到**使用** browseScroll 之前。原实现在绘制之后才回收
+        // （六轮审计#3），窗口变矮 / 列表缩短时本帧仍用**越界**偏移绘制 → 顶部整段滚成
+        // 空白 → 闪一帧。列表长度在绘制前已知（browseCache 惰性重算后即可），
+        // 行高固定 16px → 上限可**精确**算出。
         // GUI 审计#2：排序/过滤结果缓存——失效点 onData()（browseCache=null）+ filter/sort 写点；
         // 首次访问时惰性重算，每帧循环不再全量 sort
         if (browseCache == null) browseCache = browseStream().toList();
         var list = browseCache;
+        int maxScroll = Math.max(0, list.size() * 16 - (rowsBottom - rowsTop));
+        if (browseScroll > maxScroll) browseScroll = maxScroll;
+        g.enableScissor(x + 1, rowsTop, x + w - 1, rowsBottom);
+        int iy = rowsTop - browseScroll;
+        int row = 0;
+        browseContentBottom = rowsTop;
         for (NetHandler.PanelData.FileRow f : list) {
             if (iy + 16 > rowsTop) {   // 只画可见区
                 if (iy < rowsBottom) {
@@ -1073,10 +1079,10 @@ public class SfxPanelScreen extends Screen {
         }
         g.disableScissor();
         // 溢出提示
-        int maxScroll = Math.max(0, browseContentBottom - rowsBottom);
-        // 六轮审计#3：窗口变矮 / 列表缩短时 rowsBottom 收窄，旧偏移会把列表顶部整段滚成空白。
-        // 必须放在循环之后——此处的 browseContentBottom 才是本帧累加出的真实内容高
-        // （帧首 resetFrameHits 已把它清零，提前引用只会恒得 0，把偏移永远夹成 0）。
+        // 十轮审计#51：maxScroll 与 clamp 已提前到绘制之前（行数在绘制前已知）。
+        // 这里的 browseContentBottom 是本帧累加出的真实内容高，与上方算出的 maxScroll 同值，
+        // 保留它作为**权威值**回填，避免两处算法漂移。
+        maxScroll = Math.max(0, browseContentBottom - rowsBottom);
         if (browseScroll > maxScroll) browseScroll = maxScroll;
         if (maxScroll > 0) {
             String hint = browseScroll <= 0 ? "↓" : (browseScroll >= maxScroll ? "↑" : "↑↓");
@@ -1176,6 +1182,13 @@ public class SfxPanelScreen extends Screen {
         // 行区滚动（复用 aboutScroll 的裁剪模式）
         int rowsTop = ty + 20;
         int rowsBottom = ty + tickH - 6;
+        // 十轮审计#51：clamp 提前到**使用** ticketScroll 之前。原实现在绘制之后才回收
+        // （六轮审计#1），窗口变矮 / purgeMsg 横幅出现时 rowsBottom 收窄，本帧仍用
+        // **越界**偏移绘制 → 顶部整段滚成空白 → 闪一帧。
+        // 行高在绘制前即可确定（空列表 16px，否则每项 22px）→ 上限可**精确**算出。
+        int maxScroll = Math.max(0,
+                (unique == 0 ? 16 : counts.size() * 22) - (rowsBottom - rowsTop));
+        if (ticketScroll > maxScroll) ticketScroll = maxScroll;
         g.enableScissor(x + 1, rowsTop, x + w - 1, rowsBottom);
         int iy = rowsTop - ticketScroll;
         ticketContentBottom = rowsTop;
@@ -1200,8 +1213,10 @@ public class SfxPanelScreen extends Screen {
         }
         g.disableScissor();
         ticketRowsBottom = rowsBottom;   // 滚动 clamp 用（GUI 审计#5：横幅出现时 render 侧才是真值）
-        int maxScroll = Math.max(0, ticketContentBottom - rowsBottom);
-        // 六轮审计#1：窗口变矮 / purgeMsg 横幅出现时 rowsBottom 收窄，旧偏移会把顶部整段滚成空白
+        // 十轮审计#51：maxScroll 与 clamp 已提前到绘制之前（行高在绘制前已知）。
+        // 这里的 ticketContentBottom 是本帧累加出的真实内容高，与上方算出的 maxScroll 同值，
+        // 保留它作为**权威值**回填，避免两处算法漂移。
+        maxScroll = Math.max(0, ticketContentBottom - rowsBottom);
         if (ticketScroll > maxScroll) ticketScroll = maxScroll;
         if (maxScroll > 0) {
             String hint = ticketScroll <= 0 ? "↓" : (ticketScroll >= maxScroll ? "↑" : "↑↓");
@@ -1283,6 +1298,12 @@ public class SfxPanelScreen extends Screen {
         int maxRows = Math.max(1, (cardH - 32) / rowH);
         var lines = data.logLines();
         int total = lines.size();
+        // 十轮审计#51：clamp 提前到**使用** logScroll 之前。原实现在绘制之后才回收
+        // （五轮审计#2 的回收在下方 logMax 之后），于是窗口变高 / 日志被清空时，
+        // 本帧仍用**越界**的 logScroll 绘制 → start 被压到 0 → 视口突跳回最旧 → 闪一帧。
+        // total 与 maxRows 都在绘制前已知 → 上限可**精确**算出，无需近似。
+        logMax = Math.max(0, total - maxRows);
+        if (logScroll > logMax) logScroll = logMax;
         int start = Math.max(0, total - maxRows - (int) logScroll);
         int iy = ly + 18;
         int shown = 0;
@@ -1304,7 +1325,9 @@ public class SfxPanelScreen extends Screen {
             iy += rowH;
         }
         // 日志滚动条：轨道 + 滑块（backlog：日志滚动夹取）。仅在有溢出时显示。
-        logMax = Math.max(0, total - maxRows);
+        // 十轮审计#51：logMax 与 logScroll 的 clamp 已提前到**使用**偏移之前（见上方），
+        // 此处 logMax 已是本帧真值（内容总行数与可视行数都在绘制前已知），
+        // 但 maxRows 依赖 cardH、cardH 依赖 h——都在绘制前算好，故上方取值同样有效。
         // 五轮审计#2（续）：日志被清空/缩短时 logMax 变小，残留的 logScroll 会让随后新增的日志
         // 一出现就跳回最旧（start 被压到 0）；这里按当前上限回收一次。
         if (logScroll > logMax) logScroll = logMax;
@@ -1332,6 +1355,11 @@ public class SfxPanelScreen extends Screen {
     // 改为只记录与滚动量无关的两个高度量。
     private int aboutContentH;     // 内容总高度（滚动上限用）
     private int aboutAvailH;       // 可视区高度（滚动上限 / 溢出提示用）
+    // 十轮审计#51：上一帧的 aboutContentH。About 页内容是固定文案，高度要**绘制完**才知道，
+    // 但「用越界偏移绘制」会闪一帧（窗口变高 → 可视区变大 → 上限变小 → 旧偏移越界 →
+    // 顶部整段空白，下一帧才回收）。用上一帧的高度做**预 clamp**即可消除闪帧；
+    // 这是滚动状态的一部分（与 aboutScroll 同类），故不受 resetFrameHits 的派生量回收约束。
+    private int aboutContentHPrev;
     private int tgBtnX, tgBtnY, tgBtnW, tgBtnH;  // Telegram 横幅命中区
     private long tgCopiedAt = -1;                // 点击复制后的提示显示时间戳
 
@@ -1384,6 +1412,14 @@ public class SfxPanelScreen extends Screen {
         int innerBottom = ly + cardH - 18;
         int availH = innerBottom - innerTop;
         aboutAvailH = availH;
+        // 十轮审计#51：预 clamp——用**上一帧**的内容高度先夹一次，再绘制。
+        // 否则窗口变高（可视区变大 → 上限变小）时，本帧仍用越界的 aboutScroll 绘制
+        // → 顶部整段滚出可视区成空白 → 下一帧才回收 → 闪一帧。
+        // 上一帧高度为 0（首帧）时跳过——此时 aboutScroll 本来也应为 0。
+        if (aboutContentHPrev > 0) {
+            double preMax = Math.max(0, aboutContentHPrev - availH + 4);
+            if (aboutScroll > preMax) aboutScroll = preMax;
+        }
         g.enableScissor(x + 1, innerTop, x + w - 1, innerBottom);
 
         int ty = innerTop - (int) aboutScroll;
@@ -1403,6 +1439,7 @@ public class SfxPanelScreen extends Screen {
         ty = aboutSection(g, x, w, ty, "sablefix.panel.about_cmds", a,
                 "sablefix.panel.about_cmds1", "sablefix.panel.about_cmds2");
         aboutContentH = ty - (innerTop - (int) aboutScroll);   // 去掉滚动偏移 = 纯内容高度
+        aboutContentHPrev = aboutContentH;                     // 十轮审计#51：供下一帧预 clamp
         // 六轮审计#1（修正）：窗口变矮时 availH 收窄，旧偏移会把内容整段滚出可视区成空白。
         // 回收必须放在 aboutContentH 重算之后——帧首 resetFrameHits 已把它清零，
         // 若在 scissor 前引用只会恒得 0，把偏移永远夹成 0（About 页彻底不能滚）。
