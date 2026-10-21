@@ -141,12 +141,15 @@ public final class ServerHandlers {
         // 任务体里捕获时，旧存档的任务可能已在新会话 init() 之后才开始跑 → 会拿到**新**代号
         // → 守卫失效。onServerStarted 里 init() 先于本调用，故此处拿到的就是本会话代号。
         final long session = dev.sfx.sablefix.scan.DamageRegistry.session();
+        // 十轮审计#56：日志缓冲同构 —— 旧存档的体检日志不得写进新会话的日志页
+        final long logSession = dev.sfx.sablefix.log.ModLog.session();
         SCAN_POOL.execute(() -> {
             // 把本线程绑定到捕获的会话。体检里的 register/clear 会核对绑定代号是否仍有效
             // → 换存档后旧体检的写入被忽略，不会用别的存档的损伤污染本会话的登记簿，
             // 也不会抹掉本会话刚登记的真损伤。
             // 必须 finally 解绑：SCAN_POOL 是**复用**线程，不解绑会让下一次任务带着旧代号。
             dev.sfx.sablefix.scan.DamageRegistry.bindSession(session);
+            dev.sfx.sablefix.log.ModLog.bindSession(logSession);
             try {
             try {
                 SubLevelScan.startupScan(server);
@@ -181,6 +184,7 @@ public final class ServerHandlers {
             }
             } finally {
                 dev.sfx.sablefix.scan.DamageRegistry.unbindSession();
+                dev.sfx.sablefix.log.ModLog.unbindSession();
             }
         });
     }

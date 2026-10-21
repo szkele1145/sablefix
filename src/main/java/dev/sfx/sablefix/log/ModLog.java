@@ -36,6 +36,38 @@ public final class ModLog {
     private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("HH:mm:ss.SSS");
     private static final Deque<Entry> BUF = new ArrayDeque<>();
 
+    /** 十轮审计#56：日志会话代号。启动体检跑在**后台线程**（SCAN_POOL 是 static 单线程池，
+     *  跨服务器实例存活）：上一个存档排入的体检任务可能在本会话启动后才跑完 →
+     *  它会把**旧存档**的扫描记录（旧文件名、旧路径、旧损伤数）写进新会话的日志页，
+     *  管理员照着去查当前存档里**根本不存在**的文件（#32 清缓冲只解决「已写入的旧日志」，
+     *  解决不了「旧任务新写入的日志」）。
+     *  做法与 DamageRegistry#55 同构：后台线程绑定自己所属会话，过期写入直接忽略。 */
+    private static final java.util.concurrent.atomic.AtomicLong SESSION =
+            new java.util.concurrent.atomic.AtomicLong();
+    /** 后台线程绑定的会话代号（null = 主线程/当前会话）。 */
+    private static final ThreadLocal<Long> BOUND_SESSION = new ThreadLocal<>();
+
+    /** 当前会话代号（入队时捕获）。 */
+    public static long session() {
+        return SESSION.get();
+    }
+
+    /** 绑定当前线程到指定会话（后台体检线程用；必须配套 unbindSession）。 */
+    public static void bindSession(long captured) {
+        BOUND_SESSION.set(captured);
+    }
+
+    /** 解绑当前线程（后台线程结束时必须调用——线程池复用线程，不解绑会串会话）。 */
+    public static void unbindSession() {
+        BOUND_SESSION.remove();
+    }
+
+    /** 本次写入是否仍属当前会话：未绑定（主线程）→ 属当前；已绑定但代号过期 → 否。 */
+    private static boolean sessionAllowed() {
+        Long bound = BOUND_SESSION.get();
+        return bound == null || bound == SESSION.get();
+    }
+
     private ModLog() {}
 
     public static void info(String msg) { add("INFO", msg, null, null); }
@@ -48,6 +80,8 @@ public final class ModLog {
     public static void errorT(String key, Object... args) { add("ERROR", "", key, args); }
 
     private static void add(String level, String msg, String key, Object[] args) {
+        // 十轮审计#56：过期会话的后台体检（别的存档）→ 丢弃这条日志，不污染本会话的日志页
+        if (!sessionAllowed()) return;
         // 七轮审计#4：1.6.2 声称"LOGGER 输出移出 synchronized 区"，但 add() 只在
         // info/warn/error 里调用，而这三个方法整体是 synchronized 的——日志输出
         // 其实一直在类锁内（持锁做文件 I/O，主线程 tick 与后台扫描线程争锁）。
@@ -106,5 +140,8 @@ public final class ModLog {
      *  注意：只清缓冲，不影响已打印到控制台的历史日志（那是 LOGGER 的职责）。 */
     public static synchronized void clearForNewSession() {
         BUF.clear();
+        // 十轮审计#56：推进会话代号——上一个存档排入/正在跑的后台体检，它的日志写入
+        // 从此被判定为过期（sessionAllowed）→ 不再往本会话的日志页写旧存档的记录。
+        SESSION.incrementAndGet();
     }
 }
