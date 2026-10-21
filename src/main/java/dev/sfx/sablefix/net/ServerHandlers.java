@@ -51,6 +51,14 @@ public final class ServerHandlers {
     // 永远为 true → 面板永远返回 SCAN_FAILED/COLD_SCAN 空报告，永不重试真扫描。
     private static volatile long lastScanFailureAt = 0L;
 
+    /** 十轮审计#31：扫描会话代号。SCAN_POOL 是 static 单线程池，跨服务器实例存活——
+     *  上一个存档排入/正在运行的扫描任务会把**旧存档的报告**写回静态 SCAN_CACHE，
+     *  把 resetScanCache() 刚清干净的缓存重新污染（面板显示别的存档的文件名、损伤数），
+     *  并且它 finally 里的 SCAN_RUNNING.set(0) 会**提前释放新会话的闸门**。
+     *  每次开服自增；任务捕获入队时的代号，写缓存前核对，不一致就丢弃结果。 */
+    private static final java.util.concurrent.atomic.AtomicLong SCAN_EPOCH =
+            new java.util.concurrent.atomic.AtomicLong();
+
     /** 通用异步任务入口：命令的磁盘扫描走 SCAN_POOL（同池与启动体检/面板扫描天然互斥串行）。 */
     public static void runAsync(Runnable task) {
         SCAN_POOL.execute(() -> {
@@ -80,6 +88,14 @@ public final class ServerHandlers {
         // 面板数据永久为空、且**没有任何路径能复位**（只能重启 JVM）。
         // 服务器实例启动即代表上一个会话彻底结束，此时复位是无条件的正确答案。
         SCAN_RUNNING.set(0);
+        // 十轮审计#31：推进会话代号——上一个存档排入/正在跑的扫描任务写缓存前会核对它，
+        // 不一致就丢弃结果（见 SCAN_EPOCH 注释），不会污染本会话的缓存。
+        SCAN_EPOCH.incrementAndGet();
+    }
+
+    /** 当前会话代号（扫描任务入队时捕获，写缓存前核对）。 */
+    private static long scanEpoch() {
+        return SCAN_EPOCH.get();
     }
 
     /** 命令 tab 补全用：从面板缓存读问题文件名（无缓存/扫描中返回空——面板一开即预热）。
@@ -98,15 +114,20 @@ public final class ServerHandlers {
     public static void warmScanCache(MinecraftServer server) {
         if (SCAN_CACHE.get() != null || !SCAN_RUNNING.compareAndSet(0, 1)) return;
         Path sublevels = worldDir(server).resolve("sublevels");
+        final long epoch = scanEpoch();   // 十轮审计#31：入队即定代号
         SCAN_POOL.execute(() -> {
             try {
-                SCAN_CACHE.set(buildScan(sublevels, server));
+                CachedScan fresh = buildScan(sublevels, server);
+                // 代号变了 = 已经换过服务器实例，这份结果是别的存档的 → 丢弃
+                if (scanEpoch() != epoch) return;
+                SCAN_CACHE.set(fresh);
             } catch (Exception e) {
                 // 十轮审计#17：与首扫/重扫路径一致地记失败时刻（冷却判断用）
-                lastScanFailureAt = System.currentTimeMillis();
+                if (scanEpoch() == epoch) lastScanFailureAt = System.currentTimeMillis();
                 SableFixMod.LOGGER.warn("补全预热扫描失败", e);
             } finally {
-                SCAN_RUNNING.set(0);
+                // 只在仍属本会话时释放闸门：过期任务若贸然 set(0)，会提前放行新会话正在跑的扫描
+                if (scanEpoch() == epoch) SCAN_RUNNING.set(0);
             }
         });
     }
@@ -175,14 +196,17 @@ public final class ServerHandlers {
             boolean coolingDown = System.currentTimeMillis() - lastScanFailureAt < SCAN_FAILURE_COOLDOWN_MS;
             if (cached == null || (failedCold && !coolingDown)) {
                 if (!coolingDown && SCAN_RUNNING.compareAndSet(0, 1)) {
+                    final long epoch = scanEpoch();   // 十轮审计#31：入队即定代号
                     SCAN_POOL.execute(() -> {
                         try {
-                            SCAN_CACHE.set(buildScan(sublevels, server));
+                            CachedScan fresh = buildScan(sublevels, server);
+                            if (scanEpoch() != epoch) return;   // 换过存档 → 丢弃本次结果
+                            SCAN_CACHE.set(fresh);
                         } catch (Exception e) {
-                            lastScanFailureAt = System.currentTimeMillis();
+                            if (scanEpoch() == epoch) lastScanFailureAt = System.currentTimeMillis();
                             SableFixMod.LOGGER.warn("后台首扫失败（30s 冷却）", e);
                         } finally {
-                            SCAN_RUNNING.set(0);
+                            if (scanEpoch() == epoch) SCAN_RUNNING.set(0);
                         }
                     });
                 }
@@ -190,24 +214,30 @@ public final class ServerHandlers {
             } else if (!failedCold && System.currentTimeMillis() - cached.at() > CACHE_TTL_MS
                     && SCAN_RUNNING.compareAndSet(0, 1)) {
                 // 过期：立即回旧数据 + 后台重扫（扫描纯文件 IO，不碰 MC API，线程安全）
+                final long epoch = scanEpoch();   // 十轮审计#31：入队即定代号
                 SCAN_POOL.execute(() -> {
                     try {
-                        SCAN_CACHE.set(buildScan(sublevels, server));
+                        CachedScan fresh = buildScan(sublevels, server);
+                        if (scanEpoch() != epoch) return;   // 换过存档 → 丢弃本次结果
+                        SCAN_CACHE.set(fresh);
                     } catch (Exception e) {
                         // 十轮审计#17：失败后必须推进 TTL 起点，否则缓存的 at 停在过去 →
                         // 下一个面板请求又判定"已过期" → 再次重扫 → **无限重扫循环**
                         // （每次 3.5s CPU，大存档持续烧 CPU；L47 注释里的失败冷却只覆盖首扫）。
                         // 旧数据此时仍然有效（扫描失败多是文件被占用等临时问题）→ 保留旧报告，
                         // 只把 TTL 起点重置到现在（60s 内不再重试），并记失败时刻供冷却判断。
-                        lastScanFailureAt = System.currentTimeMillis();
-                        CachedScan old = SCAN_CACHE.get();
-                        if (old != null) {
-                            SCAN_CACHE.set(new CachedScan(old.report(), old.ticketUuids(),
-                                    old.ticketCount(), System.currentTimeMillis(), old.backups()));
+                        // 十轮审计#31：跨会话的失败不该写本会话的冷却/缓存。
+                        if (scanEpoch() == epoch) {
+                            lastScanFailureAt = System.currentTimeMillis();
+                            CachedScan old = SCAN_CACHE.get();
+                            if (old != null) {
+                                SCAN_CACHE.set(new CachedScan(old.report(), old.ticketUuids(),
+                                        old.ticketCount(), System.currentTimeMillis(), old.backups()));
+                            }
                         }
                         SableFixMod.LOGGER.warn("后台重扫失败（沿用旧缓存，60s 后重试）", e);
                     } finally {
-                        SCAN_RUNNING.set(0);
+                        if (scanEpoch() == epoch) SCAN_RUNNING.set(0);
                     }
                 });
             }
