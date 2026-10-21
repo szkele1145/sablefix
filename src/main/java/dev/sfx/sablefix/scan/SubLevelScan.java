@@ -38,6 +38,18 @@ public final class SubLevelScan {
             dev.sfx.sablefix.log.ModLog.infoT("sablefix.scan.sub_start");
             Path sublevels = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
             int staleRo = warnStaleReadOnly(sublevels);
+            // 十轮审计#47：扫描**前**记下已登记的 SUBLVL_DEAD 文件名（用于扫后清掉
+            // 「本轮已健康」的旧登记）。原实现只对**有问题**的文件 register，从不 clear
+            // 已恢复的文件 → 用户手动修好（或 Sable 自己写回）后，登记永久残留 →
+            // 每 5 分钟误报 WARN + 玩家进服永久提示（与十轮审计#46 同族：孤立登记无人清）。
+            // 本仓已有同构先例：warnStaleReadOnly 的 else 分支就做了闭环清除。
+            java.util.Set<String> prevDead = new java.util.HashSet<>();
+            for (DamageRegistry.Entry e : DamageRegistry.snapshot()) {
+                if (DamageRegistry.Kind.SUBLVL_DEAD.name().equals(e.kind)
+                        && !SCAN_FAILED_FILE.equals(e.file)) {
+                    prevDead.add(e.file);
+                }
+            }
             Report r = scan(sublevels);
             // 十轮审计#10：闭环清登记——上次扫描失败登记了 "<sublevels scan failed>"，
             // 本次扫描成功即说明问题已消失（权限恢复/文件修复）。原实现无清除方 →
@@ -61,6 +73,27 @@ public final class SubLevelScan {
                 }
                 dev.sfx.sablefix.log.ModLog.warnT("sablefix.scan.sub_issues", dead, bad);
                 SableFixMod.LOGGER.warn("子层级体检：{} 个文件共 {} 个死指针 / {} 个坏条目，用 /sablefix check 查看", r.slvlr().size() + r.slvls().size(), dead, bad);
+            }
+            // 十轮审计#47：闭环——本轮**未**出现在问题列表里的旧登记（文件已恢复健康）
+            // 必须清掉，否则登记永久残留（每 5 分钟误报 + 玩家永久提示）。
+            int cleared = 0;
+            for (String old : prevDead) {
+                boolean stillBad = false;
+                for (SlvlIssue i : r.slvlr()) {
+                    if (i.file().getFileName().toString().equals(old)) { stillBad = true; break; }
+                }
+                if (!stillBad) {
+                    for (SlvlsIssue i : r.slvls()) {
+                        if (i.file().getFileName().toString().equals(old)) { stillBad = true; break; }
+                    }
+                }
+                if (!stillBad) {
+                    DamageRegistry.clear(DamageRegistry.Kind.SUBLVL_DEAD, old);
+                    cleared++;
+                }
+            }
+            if (cleared > 0) {
+                SableFixMod.LOGGER.info("子层级体检：{} 个已恢复健康的文件从损伤登记簿移除", cleared);
             }
         } catch (Exception e) {
             dev.sfx.sablefix.log.ModLog.errorT("sablefix.scan.sub_fail", e.getMessage());
