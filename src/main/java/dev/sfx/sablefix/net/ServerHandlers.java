@@ -150,15 +150,23 @@ public final class ServerHandlers {
             }
             // 启动扫描结果直接入缓存：面板打开瞬间就有全量数据（60s TTL 内免重扫）
             if (SCAN_RUNNING.compareAndSet(0, 1)) {
+                // 十轮审计#54：补 epoch 检查（#31 的设计在**这条路径上被漏掉**）。
+                // SCAN_POOL 是 static 单线程池、跨会话存活：上一个存档排入的启动扫描
+                // 可能在本会话启动后才跑完 → 它会把**别的存档**的报告写进 SCAN_CACHE，
+                // 而且 finally 里的 SCAN_RUNNING.set(0) 会**提前放行**本会话正在跑的扫描闸门。
+                // 与 warmScanCache / 面板重扫两处一致：入队即定代号，写缓存前核对。
+                final long epoch = scanEpoch();
                 try {
                     Path sublevels = worldDir(server).resolve("sublevels");
-                    SCAN_CACHE.set(buildScan(sublevels, server));
+                    CachedScan fresh = buildScan(sublevels, server);
+                    if (scanEpoch() != epoch) return;   // 换过存档 → 丢弃本次结果
+                    SCAN_CACHE.set(fresh);
                 } catch (Exception e) {
                     // 十轮审计#17：与首扫/重扫/预热路径一致地记失败时刻（冷却判断用）
-                    lastScanFailureAt = System.currentTimeMillis();
+                    if (scanEpoch() == epoch) lastScanFailureAt = System.currentTimeMillis();
                     SableFixMod.LOGGER.warn("启动扫描入缓存失败（面板打开时会重扫）", e);
                 } finally {
-                    SCAN_RUNNING.set(0);
+                    if (scanEpoch() == epoch) SCAN_RUNNING.set(0);
                 }
             }
         });
