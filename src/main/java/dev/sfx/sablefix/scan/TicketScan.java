@@ -33,6 +33,13 @@ public final class TicketScan {
             if (!Files.exists(p)) {
                 dev.sfx.sablefix.log.ModLog.infoT("sablefix.scan.tickets_absent");
                 SableFixMod.LOGGER.info("票据体检：文件不存在（视为 0 条，正常）");
+                // 十轮审计#48：文件不存在时也要**清登记**——原实现直接 return，两类残留无人清：
+                //  1) 上轮文件损坏 → 登记 "<corrupted ticket file>" → 管理员删掉坏文件 → 本条永久残留；
+                //  2) 上轮 150 条 → 登记 "<文件名>" → 文件被删 → 本条永久残留。
+                // 两者都会导致每 5 分钟误报 WARN + 玩家进服永久提示。
+                // 「文件不存在」= 0 条 = 健康，与解析成功但计数回落是同一情形（L49-51 的 else 分支）。
+                DamageRegistry.clear(DamageRegistry.Kind.TICKETS_STUCK, CORRUPTED_TICKET_FILE);
+                DamageRegistry.clear(DamageRegistry.Kind.TICKETS_STUCK, p.getFileName().toString());
                 return;
             }
             TicketInfo info = read(p);
