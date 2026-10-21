@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -91,7 +92,14 @@ public final class DiagReport {
         // 模组日志（最近 200 条）。九轮审计#1：可翻译条目在报告里渲染为服务端语言（en_us）——
         // 报告是发给维护者/群里的纯文本文件，与玩家客户端语言无关。
         List<ModLog.Entry> logs = ModLog.snapshot();
+        // 十轮审计#63：报告的**第一诉求**是「哪里错了」。原先只有一段平铺的日志，
+        // 维护者要在 200 行里自己找 ERROR 行 —— 而环形缓冲上限 200 条，早期的错误
+        // 可能已被挤掉（只在服务器 logs/latest.log 里）。故在日志明细**之前**加一段
+        // 错误汇总：ERROR **全部**列出（数量通常很少），WARN 列出前若干条。
+        appendErrorSummary(sb, logs);
         sb.append("--- 模组日志 (最近 ").append(logs.size()).append(" 条) ---\n");
+        sb.append("  [注] 模组日志是环形缓冲，最多保留 200 条；本次运行更早的日志只存在于")
+                .append("服务器的 logs/latest.log（其中混有其他存档的历史记录）\n");
         for (var e : logs) {
             sb.append("  ").append(e.time()).append(" [").append(e.level()).append("] ");
             if (e.translatable()) {
@@ -210,6 +218,50 @@ public final class DiagReport {
                 return Path.of(".").resolve("logs").resolve("sablefix");
             }
         }
+    }
+
+    /**
+     * 错误汇总段（十轮审计#63）：把本次运行里的 ERROR **全部**列出，WARN 列出前若干条。
+     *
+     * <p>可翻译条目在此处按**服务端语言**（en_us）渲染——与日志明细段一致
+     * （报告是给维护者看的纯文本，与玩家客户端语言无关）。
+     */
+    private static void appendErrorSummary(StringBuilder sb, List<ModLog.Entry> logs) {
+        List<ModLog.Entry> errors = new ArrayList<>();
+        List<ModLog.Entry> warns = new ArrayList<>();
+        for (var e : logs) {
+            if ("ERROR".equals(e.level())) errors.add(e);
+            else if ("WARN".equals(e.level())) warns.add(e);
+        }
+        if (errors.isEmpty() && warns.isEmpty()) {
+            sb.append("--- 错误汇总：本次运行无 ERROR / WARN ---\n\n");
+            return;
+        }
+        sb.append("--- 错误汇总 (ERROR ").append(errors.size())
+                .append(" 条, WARN ").append(warns.size()).append(" 条) ---\n");
+        for (var e : errors) {
+            sb.append("  [ERROR] ").append(e.time()).append(' ')
+                    .append(renderEntry(e)).append('\n');
+        }
+        // WARN 数量可能很大（每个文件一条），只列前 20 条并说明总数
+        final int warnShow = 20;
+        for (int i = 0; i < Math.min(warnShow, warns.size()); i++) {
+            sb.append("  [WARN] ").append(warns.get(i).time()).append(' ')
+                    .append(renderEntry(warns.get(i))).append('\n');
+        }
+        if (warns.size() > warnShow) {
+            sb.append("  …（另有 ").append(warns.size() - warnShow).append(" 条 WARN 未列出，见下方日志明细）\n");
+        }
+        sb.append('\n');
+    }
+
+    /** 单条日志的文本渲染（可翻译条目按服务端语言解析）。 */
+    private static String renderEntry(ModLog.Entry e) {
+        if (e.translatable()) {
+            return net.minecraft.network.chat.Component.translatable(e.key(),
+                    e.args() == null ? new Object[0] : e.args().toArray()).getString();
+        }
+        return e.msg();
     }
 
     /**
