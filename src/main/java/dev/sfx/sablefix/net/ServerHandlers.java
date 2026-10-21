@@ -137,7 +137,17 @@ public final class ServerHandlers {
      *  修复：结果同时填 SCAN_CACHE——开服扫的那次成果对面板可见（原实现扫完即丢，
      *  面板打开还要整个重扫一遍，用户看到的是"扫描中"白等）。 */
     public static void runStartupScanAsync(MinecraftServer server) {
+        // 十轮审计#55：代号必须**入队时**捕获（在主线程、init() 之后），不能在任务体里捕获——
+        // 任务体里捕获时，旧存档的任务可能已在新会话 init() 之后才开始跑 → 会拿到**新**代号
+        // → 守卫失效。onServerStarted 里 init() 先于本调用，故此处拿到的就是本会话代号。
+        final long session = dev.sfx.sablefix.scan.DamageRegistry.session();
         SCAN_POOL.execute(() -> {
+            // 把本线程绑定到捕获的会话。体检里的 register/clear 会核对绑定代号是否仍有效
+            // → 换存档后旧体检的写入被忽略，不会用别的存档的损伤污染本会话的登记簿，
+            // 也不会抹掉本会话刚登记的真损伤。
+            // 必须 finally 解绑：SCAN_POOL 是**复用**线程，不解绑会让下一次任务带着旧代号。
+            dev.sfx.sablefix.scan.DamageRegistry.bindSession(session);
+            try {
             try {
                 SubLevelScan.startupScan(server);
             } catch (Exception e) {
@@ -168,6 +178,9 @@ public final class ServerHandlers {
                 } finally {
                     if (scanEpoch() == epoch) SCAN_RUNNING.set(0);
                 }
+            }
+            } finally {
+                dev.sfx.sablefix.scan.DamageRegistry.unbindSession();
             }
         });
     }

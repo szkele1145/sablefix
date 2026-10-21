@@ -65,6 +65,41 @@ public final class DamageRegistry {
     });
     private static long lastPeriodicWarnMs;
 
+    /** 十轮审计#55：登记簿会话代号。体检跑在**后台线程**（SCAN_POOL 是 static 单线程池，
+     *  跨服务器实例存活）：上一个存档排入的体检任务可能在本会话 init() 之后才跑完 →
+     *  它会用**旧存档**的路径去 register/clear → 写盘虽落到旧存档的文件（#8 已保证），
+     *  但**内存 map 是共享的** → 新存档的登记簿被**别的存档**的损伤污染，
+     *  且它的 clear 还会**抹掉本会话刚登记的真损伤**。
+     *
+     *  <p>做法：后台体检线程在开始时 bindSession(captured) 绑定它所属的会话，
+     *  register/clear 发现自己绑定的会话已过期就**直接忽略**（不写内存、不写盘）。
+     *  主线程调用（未绑定）视为当前会话，正常生效。 */
+    private static final java.util.concurrent.atomic.AtomicLong SESSION =
+            new java.util.concurrent.atomic.AtomicLong();
+    /** 后台体检线程绑定的会话代号（null = 主线程/当前会话）。 */
+    private static final ThreadLocal<Long> BOUND_SESSION = new ThreadLocal<>();
+
+    /** 当前会话代号（体检开始时捕获，结束后核对）。 */
+    public static long session() {
+        return SESSION.get();
+    }
+
+    /** 绑定当前线程到指定会话（后台体检线程用；必须配套 unbindSession）。 */
+    public static void bindSession(long captured) {
+        BOUND_SESSION.set(captured);
+    }
+
+    /** 解绑当前线程（后台体检线程结束时必须调用，否则线程池复用会串会话）。 */
+    public static void unbindSession() {
+        BOUND_SESSION.remove();
+    }
+
+    /** 本次调用是否仍属当前会话：未绑定（主线程）→ 属当前；已绑定但代号过期 → 否。 */
+    private static boolean sessionAllowed() {
+        Long bound = BOUND_SESSION.get();
+        return bound == null || bound == SESSION.get();
+    }
+
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static volatile Path storePath;   // ServerStarted 时锚定
 
@@ -73,6 +108,8 @@ public final class DamageRegistry {
      *  临界区内做 GSON+ATOMIC_MOVE（1-50ms），与主线程每 tick 的 periodicWarn 争锁 →
      *  偶发单 tick 阻塞（隐形掉 tps 源）。改后"最后写赢"，可接受。 */
     public static synchronized boolean register(Kind kind, String file, int count) {
+        // 十轮审计#55：过期会话的后台体检（别的存档）→ 忽略，不污染本会话的登记簿
+        if (!sessionAllowed()) return false;
         String id = kind.name() + ":" + file;
         long now = System.currentTimeMillis();
         Entry e = DAMAGE.get(id);
@@ -99,6 +136,8 @@ public final class DamageRegistry {
 
     /** 问题消失（如玩家已用 repair 修复）时移除，下次 WARN 不再出现。写盘同样移到锁外（审计#3）。 */
     public static synchronized void clear(Kind kind, String file) {
+        // 十轮审计#55：过期会话的后台体检若继续 clear，会**抹掉本会话刚登记的真损伤**
+        if (!sessionAllowed()) return;
         if (DAMAGE.remove(kind.name() + ":" + file) != null) {
             Map<String, Entry> snap = snapshotLocked();   // 同样锁内深拷贝
             final Path target = storePath;                 // 十轮审计#8：路径随快照捕获
@@ -146,6 +185,9 @@ public final class DamageRegistry {
      *  排空队列，保证读到的就是最后写入的。无超时：启动路径多等几个写任务是安全的
      *  （flush 超时说明磁盘本来就慢，这里的等待通常也是毫秒级）。 */
     public static synchronized void init(Path dataDir) {
+        // 十轮审计#55：推进会话代号——上一个存档排入/正在跑的后台体检，
+        // 它的 register/clear 从此被判定为过期（sessionAllowed）→ 不再污染本会话的登记簿。
+        SESSION.incrementAndGet();
         try {
             WRITE_POOL.submit(() -> { }).get(10, java.util.concurrent.TimeUnit.SECONDS);
         } catch (Exception e) {
