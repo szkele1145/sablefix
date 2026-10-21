@@ -112,7 +112,7 @@ public final class SableWriteMask {
                                 Files.setAttribute(p, "dos:readonly", false);
                                 n++;
                             }
-                        } catch (IOException | UnsupportedOperationException ignored) {}
+                        } catch (IOException | UnsupportedOperationException | IllegalArgumentException ignored) {}
                     }
                 }
             }
@@ -178,18 +178,35 @@ public final class SableWriteMask {
     }
 
     /** 修复写入的毫秒窗口：单文件临时解锁 → 执行写入 → 回锁。
-     *  调用方在 callable 里做实际的 apply（备份+清零）。 */
+     *  调用方在 callable 里做实际的 apply（备份+清零）。
+     *  十轮审计#34：属性访问失败必须**降级继续**，绝不能拦住写入动作。
+     *  原实现 getAttribute/setAttribute 只 catch IOException——但**不支持 dos: 视图的
+     *  文件系统**（探针实测：zip 文件系统 / 部分 SMB/WSL 挂载）抛的是
+     *  UnsupportedOperationException（RuntimeException），直接冒泡：
+     *  maskAll 返回 false 后 fix 降级纯修复模式没问题，但修复循环里的 withWritable
+     *  会在**文件本来可写**的情况下把每个文件记成 fail（修复一次成功都没跑成）。
+     *  属性查询失败 = 无法得知当前是否只读 = 不存在"回锁"义务 → 当 was=false 处理；
+     *  预解锁失败 = 文件可能仍只读 → 写入会自然失败并向上报（fail-loud 不变）。 */
     public static synchronized <T> T withWritable(Path file, Callable<T> writeAction) throws Exception {
         boolean was = false;
         try {
             was = (Boolean) Files.getAttribute(file, "dos:readonly");
-        } catch (IOException ignored) {}
-        if (was) Files.setAttribute(file, "dos:readonly", false);
+        } catch (IOException | UnsupportedOperationException | IllegalArgumentException ignored) {
+            // 十轮审计#34：UOE/IAE = 该文件系统不支持 dos: 视图（RuntimeException 不该冒泡）
+            was = false;
+        }
+        if (was) {
+            try {
+                Files.setAttribute(file, "dos:readonly", false);
+            } catch (IOException | UnsupportedOperationException | IllegalArgumentException ignored) {
+                // 预解锁失败：文件可能仍只读 → writeAction 会自然失败并向上报（不吞）
+            }
+        }
         try {
             return writeAction.call();
         } finally {
             if (was) {
-                try { Files.setAttribute(file, "dos:readonly", true); } catch (IOException ignored) {}
+                try { Files.setAttribute(file, "dos:readonly", true); } catch (IOException | UnsupportedOperationException | IllegalArgumentException ignored) {}
             }
         }
     }
