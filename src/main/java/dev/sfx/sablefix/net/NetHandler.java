@@ -89,11 +89,7 @@ public final class NetHandler {
          *  <p>原实现两类行的 msg 语义不一致：可翻译行 msg=时间戳、纯文本行 msg=时间戳+正文，
          *  客户端只能靠「在文本里找第一个 ']'」来猜哪段是头部——正文含 ']' 时（异常消息、
          *  路径片段）会被误切错位，且两类行的渲染形态不同（纯文本行时间戳不单独成列）。 */
-        public record LogRow(String level, String msg, String key, List<String> args, String body) {
-            public LogRow(String level, String msg, String key, List<String> args) {
-                this(level, msg, key, args, "");
-            }
-        }
+        public record LogRow(String level, String msg, String key, List<String> args, String body) {}
 
         public static final Type<PanelData> TYPE = new Type<>(id("panel_data"));
         public static final StreamCodec<FriendlyByteBuf, PanelData> CODEC = StreamCodec.of(NetHandler::writePanel, NetHandler::readPanel);
