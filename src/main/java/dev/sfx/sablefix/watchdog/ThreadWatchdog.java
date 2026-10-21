@@ -121,12 +121,32 @@ public final class ThreadWatchdog {
             //  而 newBufferedWriter 默认 CREATE+TRUNCATE → 同名会**截断覆盖**，
             //  丢掉先写的那份栈证据。加碰撞后缀，绝不覆盖已有 dump。
             out = dir.resolve("threaddump-" + stamp + ".txt");
-            for (int i = 1; Files.exists(out) && i < 100; i++) {
-                out = dir.resolve("threaddump-" + stamp + "-" + i + ".txt");
+            // 十轮审计#49：碰撞处理改为**独占创建**（CREATE_NEW），已存在就换名重试。
+            // 原实现用「先 Files.exists 探测、再 newBufferedWriter（默认 CREATE+TRUNCATE）」：
+            // 探测与创建之间有竞态（另一次抓栈可能同时创建同名文件）→ 后者**截断覆盖**前者，
+            // 丢掉先写的那份栈证据；且后缀循环上限 100 用尽后，i=100 退出循环时 out 仍
+            // 可能已存在 → 照样覆盖。与 DiagReport 的 #40 同构（那边已改用 CREATE_NEW 占位）。
+            // 栈证据是**唯一一份**卡死现场，绝不能被覆盖。
+            PrintWriter w = null;
+            for (int i = 0; i < 100; i++) {
+                Path cand = (i == 0) ? dir.resolve("threaddump-" + stamp + ".txt")
+                        : dir.resolve("threaddump-" + stamp + "-" + i + ".txt");
+                try {
+                    w = new PrintWriter(Files.newBufferedWriter(cand,
+                            StandardCharsets.UTF_8, java.nio.file.StandardOpenOption.CREATE_NEW,
+                            java.nio.file.StandardOpenOption.WRITE));
+                    out = cand;
+                    break;
+                } catch (java.nio.file.FileAlreadyExistsException e) {
+                    // 同名已存在（极罕见：同毫秒多次抓栈）→ 换下一个后缀
+                }
             }
-            try (PrintWriter w = new PrintWriter(Files.newBufferedWriter(out, StandardCharsets.UTF_8))) {
-                w.printf("主线程已 %.1f 秒没有 tick%n", stallNanos / 1_000_000_000.0);
-                w.printf("抓取时间: %s%n%n", LocalDateTime.now());
+            if (w == null) {
+                throw new IOException("无法创建线程栈文件（前 100 个同名都已被占用）");
+            }
+            try (PrintWriter pw = w) {
+                pw.printf("主线程已 %.1f 秒没有 tick%n", stallNanos / 1_000_000_000.0);
+                pw.printf("抓取时间: %s%n%n", LocalDateTime.now());
                 // Thread.getAllStackTraces() 在 JDK 20+ 已过时（一致性/活性问题）——
                 // 改用 ThreadMXBean.dumpAllThreads（官方推荐的等价 API，且含锁信息能力）
                 java.lang.management.ThreadMXBean mx = java.lang.management.ManagementFactory.getThreadMXBean();
@@ -134,15 +154,15 @@ public final class ThreadWatchdog {
                 if (infos == null) {
                     // 理论不应为 null（JMX 实现返回空数组而非 null），但栈证据是卡死现场的
                     //  唯一来源——为 null 时写一行说明并保留文件，别让整个抓栈白跑。
-                    w.println("(线程信息不可用: dumpAllThreads 返回 null)");
+                    pw.println("(线程信息不可用: dumpAllThreads 返回 null)");
                 }
                 if (infos != null) for (java.lang.management.ThreadInfo ti : infos) {
-                    w.printf("\"%s\" prio=%d id=%d %s%n", ti.getThreadName(),
+                    pw.printf("\"%s\" prio=%d id=%d %s%n", ti.getThreadName(),
                             ti.getPriority(), ti.getThreadId(), ti.getThreadState());
                     for (StackTraceElement ste : ti.getStackTrace()) {
-                        w.printf("\tat %s%n", ste);
+                        pw.printf("\tat %s%n", ste);
                     }
-                    w.println();
+                    pw.println();
                 }
             }
             DUMPS.incrementAndGet();
@@ -152,11 +172,14 @@ public final class ThreadWatchdog {
             ModLogHolder.dumped(stallNanos, out);
             SableFixMod.LOGGER.warn("主线程已卡 {} 秒！线程栈已写入 {}", stallNanos / 1_000_000_000.0, out);
             return out;
-        } catch (IOException ex) {
+        } catch (IOException | RuntimeException ex) {
             // 十轮审计#28：写入失败（磁盘满/权限）会留下一个**残缺的** threaddump-*.txt：
             //  ① 它占用 50 份保留配额（pruneOldDumps 按文件数）→ 挤掉真正的有效栈；
             //  ② DiagReport.latestDump() 按 mtime 选最新 → 可能选中这个残缺文件
             //  → 诊断报告里的「线程栈」是空的，比没有更糟。失败即删除半截文件。
+            // 十轮审计#49：补 RuntimeException —— 写栈过程中若抛非受检异常（如 OOM 之外的
+            //  意外 NPE），原来会直接冒泡出 dump()：文件已建但只写了一半 → 半截栈留在盘上
+            //  （且占保留配额、还可能被 latestDump 选中）。看门狗线程绝不能因它死掉。
             try { if (out != null) Files.deleteIfExists(out); } catch (IOException ignored) {}
             // 八轮审计#2：LOGGER 走控制台；同步进 ModLog 环形缓冲（面板日志页可见），复活死键 watch.write_fail
             SableFixMod.LOGGER.error("写线程栈失败", ex);
