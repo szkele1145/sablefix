@@ -23,14 +23,36 @@ public final class DiagReport {
 
     private DiagReport() {}
 
-    /** 生成报告并返回写入路径。异步线程调用（磁盘 IO：读 dump 目录 + 写一个 txt）。 */
-    public static Path write() throws IOException {
+    /**
+     * 生成报告并返回写入路径。异步线程调用（磁盘 IO：读 dump 目录 + 写一个 txt）。
+     *
+     * @param server 当前服务器实例；用于在报告里标明**这是哪个世界**（十轮审计#62）。
+     *               传 null 时报告不含世界信息（不崩，但维护者无法定位是哪个存档）。
+     */
+    public static Path write(net.minecraft.server.MinecraftServer server) throws IOException {
         StringBuilder sb = new StringBuilder(4096);
         sb.append("=== Sable Fix Core 诊断报告 ===\n");
         sb.append("生成时间: ").append(LocalDateTime.now()
                 .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))).append('\n');
         sb.append("版本: ").append(SableFixMod.VERSION).append("  协议: ")
                 .append(dev.sfx.sablefix.net.NetHandler.PROTOCOL_VERSION).append('\n');
+        // 十轮审计#62：报告必须能回答「这是**哪个世界**的报告」——
+        // 面板服多存档时，所有存档的报告都落在同一个 <运行目录>/logs/sablefix/ 里，
+        // 文件名只带时间戳 → 维护者拿到一份报告**不知道是哪个存档** → 无法定位问题，
+        // 而报告的唯一用途就是求助。头部标明世界名与存档目录。
+        String worldName = null;
+        String worldDir = null;
+        if (server != null) {
+            try {
+                worldName = server.getWorldData().getLevelName();
+            } catch (Throwable ignored) {}
+            try {
+                worldDir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
+                        .toAbsolutePath().toString();
+            } catch (Throwable ignored) {}
+        }
+        sb.append("世界名称: ").append(worldName == null ? "(未知)" : worldName).append('\n');
+        sb.append("存档目录: ").append(worldDir == null ? "(未知)" : worldDir).append('\n');
         // 十轮审计#60：用**服务器实例**运行时长。原先用 START_TIME（JVM 启动时刻）→
         //  面板服换存档时 JVM 常驻 → 报告写「运行时长 86400000ms」而服务器只开了 5 分钟
         //  → 维护者据此判断「跑了一天都没卡死」→ **误判**。
@@ -38,6 +60,16 @@ public final class DiagReport {
         sb.append("进程启动时间: ").append(new java.util.Date(dev.sfx.sablefix.SableFixMod.START_TIME))
                 .append("  (面板服换存档时 JVM 常驻，与上面的运行时长不同)\n");
         sb.append("NeoForge: ").append(net.neoforged.fml.loading.FMLLoader.versionInfo().neoForgeVersion()).append('\n');
+        if (server != null) {
+            try {
+                sb.append("在线玩家数: ").append(server.getPlayerCount()).append("  维度数: ");
+                // MC 1.21.1：MinecraftServer#getAllLevels() 返回 Iterable<ServerLevel>（不是 Collection），
+                //  没有 size() → 用流式计数（源码 MinecraftServer.java 已核对）。
+                int dims = 0;
+                for (net.minecraft.server.level.ServerLevel ignored2 : server.getAllLevels()) dims++;
+                sb.append(dims).append('\n');
+            } catch (Throwable ignored) {}
+        }
         sb.append('\n');
 
         // 损伤登记簿
@@ -125,8 +157,10 @@ public final class DiagReport {
         Files.createDirectories(dir);
         // 十轮审计#27：文件名原本是秒级精度 → 同一秒内生成两份报告会**互相覆盖**
         // （与备份覆盖同族）。改用毫秒 + 碰撞后缀。
-        String base = "report-" + LocalDateTime.now()
-                .format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS"));
+        // 十轮审计#62：文件名带上**世界名**——面板服多存档时所有报告落在同一目录，
+        // 只有时间戳 → 维护者分不清哪份是哪个世界的（报告头已标世界名，文件名同步更好找）。
+        String base = "report-" + safeFilePart(worldName) + "-"
+                + LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS"));
         Path out = dir.resolve(base + ".txt");
         for (int i = 1; Files.exists(out) && i < 100; i++) {
             out = dir.resolve(base + "-" + i + ".txt");
@@ -176,6 +210,35 @@ public final class DiagReport {
                 return Path.of(".").resolve("logs").resolve("sablefix");
             }
         }
+    }
+
+    /**
+     * 把世界名净化成可安全用作文件名的一段。
+     *
+     * <p>只剔除 Windows 文件名里**真正非法**的字符（{@code < > : " / \ | ? *} 与控制字符），
+     * **保留非 ASCII 字符**（中文等）——世界名用中文是常态，若一律替换成下划线，
+     * 所有中文世界名都会退化成同一个兜底名，多存档时**依然分不清**（#62 的目的落空）。
+     * 另：Windows 不允许文件名以点或空格结尾，一并处理。
+     */
+    private static String safeFilePart(String name) {
+        if (name == null || name.isEmpty()) return "world";
+        StringBuilder sb = new StringBuilder(Math.min(name.length(), 24));
+        for (int i = 0; i < name.length() && sb.length() < 24; i++) {
+            char c = name.charAt(i);
+            boolean illegal = c < 0x20
+                    || c == '<' || c == '>' || c == ':' || c == '"'
+                    || c == '/' || c == '\\' || c == '|' || c == '?' || c == '*';
+            sb.append(illegal ? '_' : c);
+        }
+        // 去掉尾部的点与空格（Windows 不允许）
+        while (sb.length() > 0) {
+            char last = sb.charAt(sb.length() - 1);
+            if (last == '.' || last == ' ') sb.setLength(sb.length() - 1);
+            else break;
+        }
+        String s = sb.toString();
+        // 全被替换成下划线（名字全是非法字符）→ 用兜底名
+        return s.replace("_", "").isEmpty() ? "world" : s;
     }
 
     /**

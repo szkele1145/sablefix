@@ -729,7 +729,7 @@ public final class SfxCommands {
         MinecraftServer server = src.getServer();
         dev.sfx.sablefix.net.ServerHandlers.runAsync(() -> {
             try {
-                Path out = dev.sfx.sablefix.scan.DiagReport.write();
+                Path out = dev.sfx.sablefix.scan.DiagReport.write(server);
                 server.execute(() -> {
                     src.sendSuccess(() -> tr("sablefix.cmd.report_done", out.toString()), false);
                     src.sendSuccess(() -> tr("sablefix.cmd.report_hint"), false);
