@@ -93,6 +93,8 @@
   "sablefix.cmd.list_slvlr": "%s: %s dead / %s live pointers, %s bytes",
   "sablefix.cmd.list_slvls": "%s: %s bad entries, %s bytes",
   "sablefix.cmd.list_fail": "Error: %s",
+  "sablefix.cmd.list_more": "...and %s more problem file(s) not listed (use /sablefix check for the summary)",
+  "sablefix.cmd.tickets_more": "...and %s more ticket(s) not listed",
   "sablefix.cmd.diag_fail": "Chunk diag failed: %s",
   "sablefix.cmd.tickets_none": "Ticket file absent (treated as 0, normal)",
   "sablefix.cmd.tickets_ok": "%s tickets, file %s bytes",

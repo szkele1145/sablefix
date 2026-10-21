@@ -477,15 +477,30 @@ public final class SfxCommands {
                         src.sendSuccess(() -> tr("sablefix.cmd.list_empty"), false);
                         return;
                     }
+                    // 十轮审计#45：列表**必须限条数**——每条 sendSuccess 都在主线程做
+                    // 序列化+网络广播，600 个损坏文件 = 600 条消息 → tick 被阻塞、
+                    // 客户端被刷爆（票据 uuid 同理，64MB 上限内可达百万条）。
+                    // 与 panel.backups_more 同思路：列前 N 条，剩余只报数量。
+                    final int LIMIT = 20;
+                    int shown = 0;
+                    int hidden = 0;
                     for (SubLevelScan.SlvlIssue i : r.slvlr()) {
+                        if (shown >= LIMIT) { hidden++; continue; }
+                        shown++;
                         // 十轮审计#4：参数必须是 String/Number/Boolean/Component——传 Path 会在
                         // 非 production 环境下被 TranslatableContents 构造器直接拒（IllegalArgumentException）。
                         src.sendSuccess(() -> tr("sablefix.cmd.list_slvlr",
                                 i.file().getFileName().toString(), i.deadPointers(), i.livePointers(), i.size()), false);
                     }
                     for (SubLevelScan.SlvlsIssue i : r.slvls()) {
+                        if (shown >= LIMIT) { hidden++; continue; }
+                        shown++;
                         src.sendSuccess(() -> tr("sablefix.cmd.list_slvls",
                                 i.file().getFileName().toString(), i.badEntries(), i.size()), false);
+                    }
+                    if (hidden > 0) {
+                        final int h = hidden;
+                        src.sendSuccess(() -> tr("sablefix.cmd.list_more", h), false);
                     }
                 });
             } catch (Exception e) {
@@ -504,7 +519,21 @@ public final class SfxCommands {
         try {
             TicketScan.TicketInfo t = TicketScan.read(tf);
             src.sendSuccess(() -> tr("sablefix.cmd.tickets_ok", t.count(), t.fileSize()), false);
-            t.uuids().forEach(u -> src.sendSuccess(() -> Component.literal("  " + u), false));
+            // 十轮审计#45：uuid 列表**必须限条数**——票据文件解压上限 64MB，每条票据
+            // 16 字节 → 理论可达百万级；forEach 每条一次 sendSuccess（主线程序列化+广播）
+            // → **tick 卡死 + 客户端被刷爆**。列前 N 条，其余只报数量。
+            final int LIMIT = 20;
+            List<java.util.UUID> uuids = t.uuids();
+            int shown = Math.min(LIMIT, uuids.size());
+            for (int i = 0; i < shown; i++) {
+                final String u = uuids.get(i).toString();
+                src.sendSuccess(() -> Component.literal("  " + u), false);
+            }
+            int hidden = uuids.size() - shown;
+            if (hidden > 0) {
+                final int h = hidden;
+                src.sendSuccess(() -> tr("sablefix.cmd.tickets_more", h), false);
+            }
         } catch (Exception e) {
             src.sendFailure(tr("sablefix.cmd.tickets_fail", e.getMessage()));
         }
