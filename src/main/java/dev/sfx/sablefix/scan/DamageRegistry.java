@@ -166,21 +166,34 @@ public final class DamageRegistry {
                 if (loaded != null) {
                     DAMAGE.putAll(loaded);
                     // 十轮审计#9：清理旧格式的 SAVE_STALLED 登记——旧版把「已 pending 毫秒数」
-                    // 拼进登记名，导致恢复时 clear 永远失配 → 登记永久残留（每 5 分钟误报 WARN
-                    // + 跨重启持久化 + 玩家进服永久提示）。新格式登记名是稳定的
-                    // 「维度@x,z」，不含 " (save pending " 后缀；带后缀的一律是旧格式残留，
-                    // 且保存卡顿是**瞬时**状态（恢复即应清），载入时直接丢弃。
+                    // 拼进登记名，导致恢复时 clear 永远失配 → 登记永久残留。
+                    // 十轮审计#46：清理范围扩大到**所有** SAVE_STALLED，不只是带旧后缀的。
+                    // 理由：保存卡顿是**瞬时**状态——停服瞬间一切 pending 都随存档落盘而消失，
+                    // 跨重启保留它**没有意义**；而清除它**只能靠 SaveObserver.dropTracking**，
+                    // 那是成对删除（PENDING 有该 key 才 clear 登记）。新会话 PENDING 是空的
+                    // → 上一轮落盘的登记**永远没人清** → 每 5 分钟误报 WARN + 跨重启持久化
+                    // + 玩家进服永久被提示（除非那个 chunk 恰好再次卡住并再次恢复）。
+                    // 与同处的 NOTIFIED.clear() 同族：会话内状态不跨实例保留。
                     int stale = 0;
                     for (java.util.Iterator<Map.Entry<String, Entry>> it = DAMAGE.entrySet().iterator(); it.hasNext(); ) {
                         Map.Entry<String, Entry> en = it.next();
-                        if (Kind.SAVE_STALLED.name().equals(en.getValue().kind)
-                                && en.getKey().contains(" (save pending ")) {
+                        if (Kind.SAVE_STALLED.name().equals(en.getValue().kind)) {
                             it.remove();
                             stale++;
                         }
                     }
                     if (stale > 0) {
-                        SableFixMod.LOGGER.info("损伤登记簿清理：{} 条旧格式保存卡顿登记（保存卡顿为瞬时状态，不跨重启保留）", stale);
+                        SableFixMod.LOGGER.info("损伤登记簿清理：{} 条保存卡顿登记（保存卡顿为瞬时状态，不跨重启保留）", stale);
+                        // 十轮审计#46：清理只改了内存——磁盘上仍是清理前的快照。若此后
+                        // 服务器再无 register/clear（很常见：开服即无损伤），flush() 只排空
+                        // 队列、不重写快照 → 陈旧条目一直留在文件里，每次启动都要再清一遍。
+                        // 这里直接把清理后的快照落盘（与 register/clear 同构：锁内深拷贝、
+                        // 单线程池串行写、REPLACE_EXISTING+ATOMIC_MOVE）。
+                        // 十轮审计#46：路径随快照捕获（与 #8 同构）——lambda 延迟执行时读
+                        // storePath 可能拿到**下一个存档**的路径，把旧存档的清理结果写错地方。
+                        final Path snapTarget = storePath;
+                        Map<String, Entry> snap = snapshotLocked();
+                        WRITE_POOL.execute(() -> writeSnapshotSync(snap, snapTarget));
                     }
                 }
                 SableFixMod.LOGGER.info("损伤登记簿载入：{} 条未处置损伤", DAMAGE.size());
