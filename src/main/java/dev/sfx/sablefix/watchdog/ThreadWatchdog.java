@@ -109,19 +109,32 @@ public final class ThreadWatchdog {
 
     /** 抓一份全线程栈；stallNanos 为 -1 表示手动触发。手动抓栈后重置冷却，避免自动重复抓栈。 */
     public static void dump(long stallNanos) {
+        Path out = null;   // 十轮审计#28：提到 try 外——写入失败时需要删掉半截文件
         try {
             // 锚定游戏运行目录（服务器 CWD 可能有差异，用 MinecraftServer 运行目录兜底）
             Path dir = resolveDumpDir();
             Files.createDirectories(dir);
             String stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS"));
-            Path out = dir.resolve("threaddump-" + stamp + ".txt");
+            // 十轮审计#28：毫秒精度仍有碰撞可能（手动抓栈与自动抓栈同一毫秒），
+            //  而 newBufferedWriter 默认 CREATE+TRUNCATE → 同名会**截断覆盖**，
+            //  丢掉先写的那份栈证据。加碰撞后缀，绝不覆盖已有 dump。
+            out = dir.resolve("threaddump-" + stamp + ".txt");
+            for (int i = 1; Files.exists(out) && i < 100; i++) {
+                out = dir.resolve("threaddump-" + stamp + "-" + i + ".txt");
+            }
             try (PrintWriter w = new PrintWriter(Files.newBufferedWriter(out, StandardCharsets.UTF_8))) {
                 w.printf("主线程已 %.1f 秒没有 tick%n", stallNanos / 1_000_000_000.0);
                 w.printf("抓取时间: %s%n%n", LocalDateTime.now());
                 // Thread.getAllStackTraces() 在 JDK 20+ 已过时（一致性/活性问题）——
                 // 改用 ThreadMXBean.dumpAllThreads（官方推荐的等价 API，且含锁信息能力）
                 java.lang.management.ThreadMXBean mx = java.lang.management.ManagementFactory.getThreadMXBean();
-                for (java.lang.management.ThreadInfo ti : mx.dumpAllThreads(true, true)) {
+                java.lang.management.ThreadInfo[] infos = mx.dumpAllThreads(true, true);
+                if (infos == null) {
+                    // 理论不应为 null（JMX 实现返回空数组而非 null），但栈证据是卡死现场的
+                    //  唯一来源——为 null 时写一行说明并保留文件，别让整个抓栈白跑。
+                    w.println("(线程信息不可用: dumpAllThreads 返回 null)");
+                }
+                if (infos != null) for (java.lang.management.ThreadInfo ti : infos) {
                     w.printf("\"%s\" prio=%d id=%d %s%n", ti.getThreadName(),
                             ti.getPriority(), ti.getThreadId(), ti.getThreadState());
                     for (StackTraceElement ste : ti.getStackTrace()) {
@@ -137,6 +150,11 @@ public final class ThreadWatchdog {
             ModLogHolder.dumped(stallNanos, out);
             SableFixMod.LOGGER.warn("主线程已卡 {} 秒！线程栈已写入 {}", stallNanos / 1_000_000_000.0, out);
         } catch (IOException ex) {
+            // 十轮审计#28：写入失败（磁盘满/权限）会留下一个**残缺的** threaddump-*.txt：
+            //  ① 它占用 50 份保留配额（pruneOldDumps 按文件数）→ 挤掉真正的有效栈；
+            //  ② DiagReport.latestDump() 按 mtime 选最新 → 可能选中这个残缺文件
+            //  → 诊断报告里的「线程栈」是空的，比没有更糟。失败即删除半截文件。
+            try { if (out != null) Files.deleteIfExists(out); } catch (IOException ignored) {}
             // 八轮审计#2：LOGGER 走控制台；同步进 ModLog 环形缓冲（面板日志页可见），复活死键 watch.write_fail
             SableFixMod.LOGGER.error("写线程栈失败", ex);
             dev.sfx.sablefix.log.ModLog.errorT("sablefix.watch.write_fail");
