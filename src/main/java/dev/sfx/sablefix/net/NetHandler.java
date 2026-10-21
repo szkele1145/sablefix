@@ -24,8 +24,10 @@ public final class NetHandler {
      *  v6: 日志行结构化（LogRow：key+args 客户端按玩家语言渲染；服务端 Language 只装 en_us，
      *      服务端预渲染会把中文服的面板日志变成英文——载荷格式变更）
      *  v7: 浏览页汇总行不再服务端预渲染（name 置空 + live 传健康数，客户端本地化渲染
-     *      browse_healthy；服务端预渲染对中文客户端是英文）——字段格式未变但**语义变更** */
-    public static final String PROTOCOL_VERSION = "7";
+     *      browse_healthy；服务端预渲染对中文客户端是英文）——字段格式未变但**语义变更**
+     *  v8: 日志行的 msg 统一为**时间戳**，正文另走 body 字段（原纯文本行把时间戳与正文
+     *      塞在 msg 里，客户端靠找 ']' 猜切分点 → 正文含 ']' 时错位）——载荷格式变更 */
+    public static final String PROTOCOL_VERSION = "8";
 
     public static void register(net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent event) {
         PayloadRegistrar reg = event.registrar(PROTOCOL_VERSION);
@@ -82,7 +84,15 @@ public final class NetHandler {
         public record BackupRow(String name, long size, long ageMs) {}
         /** 日志行（九轮审计#1）：key 非空=可翻译（客户端按玩家语言渲染，args 逐个下发）；
          *  key 空=纯文本 msg 已定型。level 仅用于染色，照原样透传。 */
-        public record LogRow(String level, String msg, String key, List<String> args) {}
+        /** 日志行（十轮审计#33：msg 语义统一为**时间戳**，正文一律走 body）。
+     *  原实现两类行的 msg 语义不一致：可翻译行 msg=时间戳、纯文本行 msg=时间戳+正文，
+     *  客户端只能靠「在文本里找第一个 ']'」来猜哪段是头部——正文含 ']' 时（异常消息、
+     *  路径片段）会被误切错位，且两类行的渲染形态不同（纯文本行时间戳不单独成列）。 */
+    public record LogRow(String level, String msg, String key, List<String> args, String body) {
+        public LogRow(String level, String msg, String key, List<String> args) {
+            this(level, msg, key, args, "");
+        }
+    }
 
         public static final Type<PanelData> TYPE = new Type<>(id("panel_data"));
         public static final StreamCodec<FriendlyByteBuf, PanelData> CODEC = StreamCodec.of(NetHandler::writePanel, NetHandler::readPanel);
@@ -247,15 +257,18 @@ public final class NetHandler {
     }
 
     /** 日志行编码（九轮审计#1）：
-     *  level(≤16B) | key(≤128B，空串=纯文本) | msg(≤384B，key 非空时为时间戳前缀) | args(逐个 ≤128B，最多 8 个)
-     *  args 统一转字符串下发——客户端按 %s 占位渲染，数字类型差异对显示无影响。 */
+     *  level(≤16B) | msg=时间戳(≤64B) | key(≤128B，空串=纯文本) | body(≤384B，纯文本正文) | args(逐个 ≤128B，最多 8 个)
+     *  args 统一转字符串下发——客户端按 %s 占位渲染，数字类型差异对显示无影响。
+     *  十轮审计#33：新增 body 字段，msg 统一为时间戳（原纯文本行把时间戳与正文塞在 msg 里，
+     *  客户端靠找 ']' 猜切分点，正文含 ']' 时错位）。 */
     private static final int MAX_LOG_ARGS = 8;
 
     private static void writeLogRow(FriendlyByteBuf f, PanelData.LogRow r) {
         f.writeUtf(utf8Trunc(r.level() == null ? "" : r.level(), 16), 16);
+        f.writeUtf(utf8Trunc(r.msg() == null ? "" : r.msg(), 64), 64);
         String key = r.key() == null ? "" : r.key();
         f.writeUtf(utf8Trunc(key, 128), 128);
-        f.writeUtf(utf8Trunc(r.msg() == null ? "" : r.msg(), 384), 384);
+        f.writeUtf(utf8Trunc(r.body() == null ? "" : r.body(), 384), 384);
         List<String> args = r.args() == null ? List.of() : r.args();
         int n = Math.min(args.size(), MAX_LOG_ARGS);
         f.writeVarInt(n);
@@ -264,12 +277,13 @@ public final class NetHandler {
 
     private static PanelData.LogRow readLogRow(FriendlyByteBuf f) {
         String level = f.readUtf(16);
+        String msg = f.readUtf(64);
         String key = f.readUtf(128);
-        String msg = f.readUtf(384);
+        String body = f.readUtf(384);
         int an = clampCount(f.readVarInt(), MAX_LOG_ARGS);
         List<String> args = new ArrayList<>(Math.min(an, MAX_LOG_ARGS));
         for (int i = 0; i < an; i++) args.add(f.readUtf(128));
-        return new PanelData.LogRow(level, msg, key.isEmpty() ? null : key, args);
+        return new PanelData.LogRow(level, msg, key.isEmpty() ? null : key, args, body);
     }
 
     /** 临时探针入口（十轮审计#1）：验证后删除。 */

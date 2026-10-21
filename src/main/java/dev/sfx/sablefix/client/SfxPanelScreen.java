@@ -224,11 +224,11 @@ public class SfxPanelScreen extends Screen {
                 new NetHandler.PanelData.DimRow("minecraft:the_end", 147, 0, 2523));
         // 九轮审计#1：日志行结构化——纯文本行走 msg（含时间戳），可翻译行走 key+args。
         var logs = java.util.List.of(
-                new NetHandler.PanelData.LogRow("INFO", "16:33:42.101 Sable Fix Core v" + SableFixMod.VERSION + " loaded", null, java.util.List.of()),
-                new NetHandler.PanelData.LogRow("INFO", "16:34:22.015", "sablefix.watch.started", java.util.List.of("20")),
-                new NetHandler.PanelData.LogRow("WARN", "16:34:23.602", "sablefix.scan.slvlr_dead", java.util.List.of("r.-4.7.slvlr", "3", "74")),
-                new NetHandler.PanelData.LogRow("INFO", "16:34:23.711", "sablefix.scan.tickets_ok", java.util.List.of("19", "707")),
-                new NetHandler.PanelData.LogRow("INFO", "16:51:08.332 panel request: Dev@[/127.0.0.1]", null, java.util.List.of()));
+                new NetHandler.PanelData.LogRow("INFO", "16:33:42.101", null, java.util.List.of(), "Sable Fix Core v" + SableFixMod.VERSION + " loaded"),
+                new NetHandler.PanelData.LogRow("INFO", "16:34:22.015", "sablefix.watch.started", java.util.List.of("20"), ""),
+                new NetHandler.PanelData.LogRow("WARN", "16:34:23.602", "sablefix.scan.slvlr_dead", java.util.List.of("r.-4.7.slvlr", "3", "74"), ""),
+                new NetHandler.PanelData.LogRow("INFO", "16:34:23.711", "sablefix.scan.tickets_ok", java.util.List.of("19", "707"), ""),
+                new NetHandler.PanelData.LogRow("INFO", "16:51:08.332", null, java.util.List.of(), "panel request: Dev@[/127.0.0.1]"));
         return new NetHandler.PanelData(files, 19, uuids, 41, 0, 22_320_000L, dims, logs, false, -1, java.util.List.of());
     }
 
@@ -1290,24 +1290,12 @@ public class SfxPanelScreen extends Screen {
             NetHandler.PanelData.LogRow row = lines.get(i);
             boolean err = "ERROR".equals(row.level());
             boolean wrn = "WARN".equals(row.level());
-            // 九轮审计#1：key 非空=可翻译（客户端按玩家语言渲染）；msg 此时是时间戳前缀。
-            // key 空=纯文本行（msg 已含时间戳与正文）。
-            String body;
-            String head = "";
-            if (row.key() != null) {
-                body = safeLogText(row.key(), row.args());
-                head = row.msg() + " [" + row.level() + "] ";
-            } else {
-                String line = row.msg();
-                int cut = line.indexOf(']');
-                if (cut > 0 && cut + 1 < line.length() && line.charAt(0) != '[') {
-                    head = line.substring(0, cut + 1);
-                    int bodyStart = (cut + 2 <= line.length() && line.charAt(cut + 1) == ' ') ? cut + 2 : cut + 1;
-                    body = line.substring(bodyStart);
-                } else {
-                    body = line;
-                }
-            }
+            // 十轮审计#33：两类行统一形态——msg 恒为时间戳、body 恒为正文。
+            // 原先纯文本行把「时间戳+正文」塞在 msg 里，客户端靠「找第一个 ']'」猜切分点：
+            //  正文含 ']'（异常消息、路径片段）会被误切错位，且纯文本行的时间戳不单独成列，
+            //  与可翻译行两列对齐的形态不一致。
+            String body = row.key() != null ? safeLogText(row.key(), row.args()) : row.body();
+            String head = row.msg() + " [" + row.level() + "] ";
             // 时间戳+等级不再按 92px 硬截断（避免在 ] 附近丢字）；] 后是否带空格按实际字符定位 body。
             dtr(g, head, x + 10, iy, w - 34, withA(FAINT, a), false);
             int headW = Math.max(font.width(head), 1);

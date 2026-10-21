@@ -284,12 +284,12 @@ public final class ServerHandlers {
             var dmg = dev.sfx.sablefix.scan.DamageRegistry.snapshot();
             if (!dmg.isEmpty()) {
                 logLines.add(new NetHandler.PanelData.LogRow("WARN",
-                        java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss.SSS"))
-                                + " 未处置损伤 " + dmg.size() + " 项："
+                        java.time.LocalDateTime.now().format(java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss.SSS")),
+                        null, java.util.List.of(),
+                        "未处置损伤 " + dmg.size() + " 项："
                                 + dmg.stream().map(e -> e.file + "×" + e.count).limit(3)
                                         .collect(java.util.stream.Collectors.joining(", "))
-                                + (dmg.size() > 3 ? " …" : ""),
-                        null, java.util.List.of()));
+                                + (dmg.size() > 3 ? " …" : "")));
             }
             // 九轮审计#1：可翻译条目下发 key+args，客户端按玩家语言渲染（服务端只装 en_us，
             // 服务端预渲染会把中文服面板日志变成英文）；纯文本条目原样透传。
@@ -300,10 +300,12 @@ public final class ServerHandlers {
                     // ModLog 侧已改为「args 永不为 null」，这里再兜一层（纵深防御）。
                     var ea = e.args();
                     logLines.add(new NetHandler.PanelData.LogRow(e.level(), e.time(), e.key(),
-                            ea == null ? java.util.List.of() : ea.stream().map(String::valueOf).toList()));
+                            ea == null ? java.util.List.of() : ea.stream().map(String::valueOf).toList(), ""));
                 } else {
-                    logLines.add(new NetHandler.PanelData.LogRow(e.level(),
-                            e.time() + " " + e.msg(), null, java.util.List.of()));
+                    // 十轮审计#33：msg 统一为时间戳，正文走 body（原先两者拼在 msg 里，
+                    // 客户端靠找 ']' 猜切分点 → 正文含 ']' 时错位，且两类行渲染形态不一致）
+                    logLines.add(new NetHandler.PanelData.LogRow(e.level(), e.time(),
+                            null, java.util.List.of(), e.msg()));
                 }
             }
 
