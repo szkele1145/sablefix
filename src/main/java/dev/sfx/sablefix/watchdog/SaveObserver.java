@@ -41,13 +41,43 @@ public final class SaveObserver {
     private static Thread thread;
     private static volatile MinecraftServer server;
 
+    /** 十轮审计#58：观察者会话代号（与 ThreadWatchdog#57 同构）。
+     *  原实现用 static `running` 做循环条件：stop() 置 false + interrupt()，但旧线程若正卡在
+     *  scanLevel()（遍历维度实体，实体量大时可达秒级）里，interrupt 被吞；下一会话 start()
+     *  把 running 置回 true → **旧线程复活**，两个观察者线程同时轮询。后果：
+     *  ① static `server` 已被换成新会话的 → 旧线程用**新存档的维度**去扫；
+     *  ② static `PENDING` 共享 → 新旧两套「维度@x,z」键混在一起；
+     *  ③ 旧线程的 dropTracking → **清掉新会话刚登记的 SAVE_STALLED**（真损伤被抹掉，
+     *     与 #55 DamageRegistry.clear 抹掉真损伤同族）；
+     *  ④ 旧线程的 register → 用**新存档的维度名**登记**旧存档**的卡顿。
+     *  改为：循环条件用代号判定；过期线程既不扫描也不登记/清登记。 */
+    private static final java.util.concurrent.atomic.AtomicLong SESSION =
+            new java.util.concurrent.atomic.AtomicLong();
+    /** 观察者线程绑定的会话代号（null = 主线程/当前会话）。 */
+    private static final ThreadLocal<Long> BOUND_SESSION = new ThreadLocal<>();
+
+    /** 本次调用是否仍属当前会话：未绑定（主线程）→ 属当前；已绑定但代号过期 → 否。 */
+    private static boolean sessionAllowed() {
+        Long bound = BOUND_SESSION.get();
+        return bound == null || bound == SESSION.get();
+    }
+
     private SaveObserver() {}
 
     public static synchronized void start(MinecraftServer srv) {
         if (thread != null) return;
         server = srv;
         running = true;
-        thread = new Thread(SaveObserver::loop, "SableFix-SaveObserver");
+        // 十轮审计#58：推进会话代号并绑定本线程——旧观察者线程的扫描/登记从此判定为过期
+        final long session = SESSION.incrementAndGet();
+        thread = new Thread(() -> {
+            BOUND_SESSION.set(session);
+            try {
+                loop();
+            } finally {
+                BOUND_SESSION.remove();
+            }
+        }, "SableFix-SaveObserver");
         thread.setDaemon(true);
         thread.start();
         SableFixMod.LOGGER.info("保存观察者启动（每 30s 轮询保存 future，跨过一轮仍卡住才登记）");
@@ -55,6 +85,10 @@ public final class SaveObserver {
 
     public static synchronized void stop() {
         running = false;
+        // 十轮审计#58：推进会话代号——旧观察者线程的循环条件据此判定过期并退出。
+        // 只靠 running=false 不够：旧线程若正卡在 scanLevel() 里，interrupt 被吞，
+        // 循环回到 while 时 running 已被下一会话 start() 置回 true → **旧线程复活**。
+        SESSION.incrementAndGet();
         if (thread != null) {
             thread.interrupt();
             thread = null;
@@ -68,7 +102,8 @@ public final class SaveObserver {
     }
 
     private static void loop() {
-        while (running) {
+        // 十轮审计#58：循环条件用**会话代号**而不是 static 的 running（详见 SESSION 注释）
+        while (sessionAllowed()) {
             try {
                 Thread.sleep(POLL_MILLIS);
             } catch (InterruptedException e) {
@@ -107,6 +142,11 @@ public final class SaveObserver {
      *  历史上正是这样出了三处漏清：!hasWork() 短路、lastSeen 超时清理、以及恢复路径
      *  （恢复路径的登记名还混入了毫秒数，匹配不上，已在上一个提交改正）。 */
     private static void dropTracking(String key) {
+        // 十轮审计#58：过期会话的观察者不得丢追踪——PENDING 是**共享 map**，
+        // 旧会话的键（维度@x,z）与新会话可能**同名**（同维度同坐标）→ 旧线程会把
+        // 新会话正在追踪的条目删掉（连带把新会话刚登记的 SAVE_STALLED 清掉）。
+        // DamageRegistry.clear 侧已有 #55 的会话守卫，这里补的是 PENDING 侧。
+        if (!sessionAllowed()) return;
         Track t = PENDING.remove(key);
         if (t != null && t.registered()) {
             dev.sfx.sablefix.scan.DamageRegistry.clear(
@@ -159,6 +199,10 @@ public final class SaveObserver {
     }
 
     private static void checkHolder(ServerLevel level, ChunkHolder holder, long now) {
+        // 十轮审计#58：过期会话的观察者不得写 PENDING——它是**共享 map**，且键是
+        // 「维度@x,z」（新旧会话可能同名）→ 旧线程的 compute 会**覆盖**新会话的 Track
+        // （新会话的 registered 标志丢失 → 它的 SAVE_STALLED 登记再也清不掉）。
+        if (!sessionAllowed()) return;
         // saveSync 字段可为 null（chunk 尚未经历首次保存）——无保存历史≠卡住，直接跳过
         var saveFuture = holder.getSaveSyncFuture();
         String key = dimName(level) + "@" + holder.getPos().x + "," + holder.getPos().z;
