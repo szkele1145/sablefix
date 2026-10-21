@@ -400,18 +400,36 @@ public final class ServerHandlers {
         SableFixMod.LOGGER.info("backup deleted: {}", target);
     }
 
-    /** 清空 backups/sablefix 下全部 .bak，返回删除数量。 */
+    /** 清空 backups/sablefix 下全部 .bak，返回删除数量。
+     *  十轮审计#43：单个文件删不掉（被占用/权限）**不能中断整批**——原实现直接
+     *  Files.delete(p)，一个被占用的备份就让整批中断，后面的备份**一个都没删**，
+     *  而命令回报失败 → 用户重试又撞同一个被占用的文件 → 后面永远清不掉。
+     *  （与十轮审计#35「一个坏文件不能中断整批」同族。）
+     *  现在：单个失败记日志并继续；**全部**都失败才抛（让用户知道确实有问题）。 */
     public static int purgeBackups(MinecraftServer server) throws IOException {
         Path backupDir = worldDir(server).resolve("backups").resolve("sablefix");
         if (!Files.isDirectory(backupDir)) return 0;
         int n = 0;
+        int failed = 0;
         try (DirectoryStream<Path> ds = Files.newDirectoryStream(backupDir, "*.bak")) {
             for (Path p : ds) {
-                Files.delete(p);
-                n++;
+                try {
+                    Files.delete(p);
+                    n++;
+                } catch (IOException e) {
+                    // 被占用/权限不足：跳过它，继续删其余的
+                    failed++;
+                    SableFixMod.LOGGER.warn("backup purge: {} 删除失败（被占用或权限不足，继续其余）",
+                            p.getFileName(), e);
+                }
             }
         }
-        SableFixMod.LOGGER.info("backup purge: {} file(s) deleted", n);
+        SableFixMod.LOGGER.info("backup purge: {} file(s) deleted, {} failed", n, failed);
+        // 一个都没删成且确实有文件 → 抛出去（命令层给「被占用」提示）
+        if (n == 0 && failed > 0) {
+            throw new java.nio.file.FileSystemException(backupDir.toString(), null,
+                    failed + " 个备份文件被占用或权限不足，未能删除");
+        }
         return n;
     }
 
