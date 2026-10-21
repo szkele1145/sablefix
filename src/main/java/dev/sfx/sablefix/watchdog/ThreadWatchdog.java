@@ -107,8 +107,10 @@ public final class ThreadWatchdog {
         }
     }
 
-    /** 抓一份全线程栈；stallNanos 为 -1 表示手动触发。手动抓栈后重置冷却，避免自动重复抓栈。 */
-    public static void dump(long stallNanos) {
+    /** 抓一份全线程栈；stallNanos 为 -1 表示手动触发。手动抓栈后重置冷却，避免自动重复抓栈。
+     *  返回写入的 dump 路径；失败返回 null（十轮审计#29：原返回 void → 命令层无法区分成功/失败，
+     *  磁盘满时仍然回显「抓栈成功」，而文件已被删除）。 */
+    public static Path dump(long stallNanos) {
         Path out = null;   // 十轮审计#28：提到 try 外——写入失败时需要删掉半截文件
         try {
             // 锚定游戏运行目录（服务器 CWD 可能有差异，用 MinecraftServer 运行目录兜底）
@@ -149,6 +151,7 @@ public final class ThreadWatchdog {
             pruneOldDumps(dir);
             ModLogHolder.dumped(stallNanos, out);
             SableFixMod.LOGGER.warn("主线程已卡 {} 秒！线程栈已写入 {}", stallNanos / 1_000_000_000.0, out);
+            return out;
         } catch (IOException ex) {
             // 十轮审计#28：写入失败（磁盘满/权限）会留下一个**残缺的** threaddump-*.txt：
             //  ① 它占用 50 份保留配额（pruneOldDumps 按文件数）→ 挤掉真正的有效栈；
@@ -158,6 +161,7 @@ public final class ThreadWatchdog {
             // 八轮审计#2：LOGGER 走控制台；同步进 ModLog 环形缓冲（面板日志页可见），复活死键 watch.write_fail
             SableFixMod.LOGGER.error("写线程栈失败", ex);
             dev.sfx.sablefix.log.ModLog.errorT("sablefix.watch.write_fail");
+            return null;
         }
     }
 

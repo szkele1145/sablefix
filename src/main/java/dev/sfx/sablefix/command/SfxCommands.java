@@ -550,12 +550,20 @@ public final class SfxCommands {
         //     移到后台线程：主线程只投递，完成后回主线程给提示。
         final MinecraftServer server = src.getServer();
         dev.sfx.sablefix.net.ServerHandlers.runAsync(() -> {
+            Path out = null;
             try {
-                ThreadWatchdog.dump(-1L);
+                out = ThreadWatchdog.dump(-1L);
             } catch (Exception e) {
                 SableFixMod.LOGGER.error("手动抓栈失败（与自动路径同构的兜底）", e);
             }
-            server.execute(() -> src.sendSuccess(() -> tr("sablefix.cmd.dump_ok"), false));
+            // 十轮审计#29：dump 现在返回写入路径；失败时为 null（半截文件已被删）。
+            //  原先无论成败都回显 dump_ok——磁盘满时玩家以为抓到了，实际什么都没有。
+            final boolean ok = out != null;
+            final String fileName = ok ? out.getFileName().toString() : "";
+            server.execute(() -> {
+                if (ok) src.sendSuccess(() -> tr("sablefix.cmd.dump_ok", fileName), false);
+                else src.sendFailure(tr("sablefix.cmd.dump_fail"));
+            });
         });
         return 0;
     }
