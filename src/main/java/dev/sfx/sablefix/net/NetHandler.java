@@ -82,17 +82,18 @@ public final class NetHandler {
         public record DimRow(String name, int entities, int blockEntities, int chunks) {}
         /** 备份行：文件名（含时间戳后缀）+ 字节数 + 距今毫秒（服务端算好，绕时钟偏差） */
         public record BackupRow(String name, long size, long ageMs) {}
-        /** 日志行（九轮审计#1）：key 非空=可翻译（客户端按玩家语言渲染，args 逐个下发）；
-         *  key 空=纯文本 msg 已定型。level 仅用于染色，照原样透传。 */
-        /** 日志行（十轮审计#33：msg 语义统一为**时间戳**，正文一律走 body）。
-     *  原实现两类行的 msg 语义不一致：可翻译行 msg=时间戳、纯文本行 msg=时间戳+正文，
-     *  客户端只能靠「在文本里找第一个 ']'」来猜哪段是头部——正文含 ']' 时（异常消息、
-     *  路径片段）会被误切错位，且两类行的渲染形态不同（纯文本行时间戳不单独成列）。 */
-    public record LogRow(String level, String msg, String key, List<String> args, String body) {
-        public LogRow(String level, String msg, String key, List<String> args) {
-            this(level, msg, key, args, "");
+        /** 日志行（九轮审计#1 + 十轮审计#33）：
+         *  key 非空 = 可翻译行（客户端按玩家语言渲染，args 逐个下发）；
+         *  key 空   = 纯文本行，正文在 body。
+         *  <p>msg 恒为**时间戳**（两类行一致），level 仅用于染色，照原样透传。
+         *  <p>原实现两类行的 msg 语义不一致：可翻译行 msg=时间戳、纯文本行 msg=时间戳+正文，
+         *  客户端只能靠「在文本里找第一个 ']'」来猜哪段是头部——正文含 ']' 时（异常消息、
+         *  路径片段）会被误切错位，且两类行的渲染形态不同（纯文本行时间戳不单独成列）。 */
+        public record LogRow(String level, String msg, String key, List<String> args, String body) {
+            public LogRow(String level, String msg, String key, List<String> args) {
+                this(level, msg, key, args, "");
+            }
         }
-    }
 
         public static final Type<PanelData> TYPE = new Type<>(id("panel_data"));
         public static final StreamCodec<FriendlyByteBuf, PanelData> CODEC = StreamCodec.of(NetHandler::writePanel, NetHandler::readPanel);
