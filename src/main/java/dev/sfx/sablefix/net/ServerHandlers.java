@@ -72,6 +72,14 @@ public final class ServerHandlers {
     public static void resetScanCache() {
         SCAN_CACHE.set(null);
         lastScanFailureAt = 0L;   // 失败冷却同样属于上一个会话
+        // 十轮审计#30：SCAN_RUNNING 也必须复位。三个扫描路径在 finally 里 set(0)，
+        // 正常流程不会泄漏——但进程在扫描中途被强杀（崩溃/System.exit）、或 halt 时
+        // 守护线程被直接掐断，finally 就不执行，SCAN_RUNNING 停在 1。
+        // 它又是 static → 下一个服务器实例的所有扫描入口都卡在
+        // `!SCAN_RUNNING.compareAndSet(0, 1)` 上直接返回：首次扫描永远不跑、
+        // 面板数据永久为空、且**没有任何路径能复位**（只能重启 JVM）。
+        // 服务器实例启动即代表上一个会话彻底结束，此时复位是无条件的正确答案。
+        SCAN_RUNNING.set(0);
     }
 
     /** 命令 tab 补全用：从面板缓存读问题文件名（无缓存/扫描中返回空——面板一开即预热）。
