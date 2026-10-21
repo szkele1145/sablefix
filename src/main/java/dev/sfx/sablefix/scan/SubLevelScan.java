@@ -232,7 +232,13 @@ public final class SubLevelScan {
                 if (ptr == 0) continue;
                 if (ptr < 4096 || ptr + 5 > size) { dead++; continue; }
                 ByteBuffer rec = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN);
-                if (ch.read(rec, ptr) != 4) { dead++; continue; }
+                // 十轮审计#36：同 planSlvlr——positioned read 可短读，读不满时 rec 是 0 →
+                // recLen=0 → 误判死指针（误报 → 修复时把好记录清零）。补读循环。
+                int got = 0, r;
+                while (rec.hasRemaining() && (r = ch.read(rec, ptr + got)) > 0) {
+                    got += r;
+                }
+                if (got < 4) { dead++; continue; }
                 long recLen = Integer.toUnsignedLong(rec.getInt(0));
                 if (recLen < 1 || ptr + 4 + recLen > size) dead++; else live++;
             }

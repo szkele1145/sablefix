@@ -67,7 +67,16 @@ public final class SubLevelRepair {
                 if (ptr == 0) continue;
                 if (ptr < 4096 || ptr + 5 > size) { slots.add(i); continue; }
                 ByteBuffer rec = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN);
-                if (ch.read(rec, ptr) != 4) { slots.add(i); continue; }
+                // 十轮审计#36：positioned read 契约可短读（返回 0..4）——单次 read 读不满时
+                // rec 里是 allocate 的 0 → recLen=0 → 误判为死指针 → 计划里多出这个槽 →
+                // apply 会把**本来完好的记录清零**（误报 → 破坏性清零）。
+                // SubLevelScan 的批量路径早有补读循环（审计#4），此处补齐同构写法。
+                // 循环条件带 r > 0：read 允许返回 0（网络存储），否则 hasRemaining 恒真 → 死循环。
+                int got = 0, r;
+                while (rec.hasRemaining() && (r = ch.read(rec, ptr + got)) > 0) {
+                    got += r;
+                }
+                if (got < 4) { slots.add(i); continue; }
                 long recLen = Integer.toUnsignedLong(rec.getInt(0));
                 if (recLen < 1 || ptr + 4 + recLen > size) slots.add(i);
             }
