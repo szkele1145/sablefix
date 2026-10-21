@@ -75,9 +75,18 @@ public final class DiagReport {
         // 最新一份线程 dump 摘要（前 80 行——死锁证据的关键面：线程名+栈顶）
         // 三轮审计#1：dump 正被 watchdog 补抓写入时 readAllLines 可能读到半写内容甚至抛 IO——
         // 单独 try-catch（失败写"读取失败"继续生成报告，不让整个 report 命令失败）
-        Path latest = latestDump();
+        //
+        // 十轮审计#61：栈文件写在 <运行目录>/logs/sablefix/，**不按存档分目录** →
+        // 面板服换存档时**上一个存档的卡死现场仍在同目录**。原实现按 mtime 挑「最新」→
+        //  报告会把**别的存档的现场**当成本次的贴出来 → 维护者据此排查**方向全错**
+        //  （本次进程的状态与上一个存档毫不相干）。
+        //  现在：优先只认**本次服务器启动之后**写的栈；本次没有卡死就**明说没有**，
+        //  并把旧栈单独标注为「上次运行的」，不与本次混为一谈。
+        long serverStart = dev.sfx.sablefix.SableFixMod.serverStartTimeMs();
+        Path latest = latestDump(serverStart);
         if (latest != null) {
             sb.append("--- 最新线程栈 (").append(latest.getFileName()).append("，前 80 行) ---\n");
+            sb.append("  [本次运行内抓取的现场]\n");
             try {
                 List<String> lines = Files.readAllLines(latest, StandardCharsets.UTF_8);
                 for (int i = 0; i < Math.min(80, lines.size()); i++) {
@@ -88,7 +97,27 @@ public final class DiagReport {
                 sb.append("  [读取失败（文件可能正被写入）: ").append(e.getMessage()).append("]\n");
             }
         } else {
-            sb.append("--- 线程栈：无（服务器未发生过卡死抓栈）---\n");
+            Path stale = latestDump(0L);   // 0 = 不设下界，取目录里最新的一份（旧的）
+            sb.append("--- 线程栈：本次运行没有卡死抓栈 ---\n");
+            if (stale != null) {
+                sb.append("  [注意] 以下是**之前某次运行**留下的栈（抓取时间早于本次服务器启动 ")
+                        .append(serverStart).append("），")
+                        .append("与本次进程状态无关，仅供参考，不要据此判断本次问题：\n");
+                try {
+                    long t = Files.getLastModifiedTime(stale).toMillis();
+                    sb.append("  文件: ").append(stale.getFileName())
+                            .append("  修改时间: ").append(new java.util.Date(t)).append('\n');
+                    List<String> lines = Files.readAllLines(stale, StandardCharsets.UTF_8);
+                    for (int i = 0; i < Math.min(80, lines.size()); i++) {
+                        sb.append("  ").append(lines.get(i)).append('\n');
+                    }
+                    if (lines.size() > 80) sb.append("  …（共 ").append(lines.size()).append(" 行，完整文件见同目录）\n");
+                } catch (Exception e) {
+                    sb.append("  [读取失败: ").append(e.getMessage()).append("]\n");
+                }
+            } else {
+                sb.append("  （服务器未发生过卡死抓栈）\n");
+            }
         }
 
         // 写入 logs/sablefix/（三轮审计#1：user.dir 解析兜底——面板服工作目录可能异常）
@@ -149,7 +178,13 @@ public final class DiagReport {
         }
     }
 
-    private static Path latestDump() {
+    /**
+     * 取目录里修改时间最新的一份线程栈。
+     *
+     * @param notBeforeMs 只接受修改时间 ≥ 该值的文件；传 0 表示不设下界。
+     *                     十轮审计#61：用于把「本次服务器运行内写的栈」与「上次运行留下的栈」分开。
+     */
+    private static Path latestDump(long notBeforeMs) {
         Path dir = reportDir();
         Path best = null;
         long bestTime = Long.MIN_VALUE;
@@ -164,6 +199,8 @@ public final class DiagReport {
                 } catch (IOException ignored) {
                     continue;
                 }
+                // 十轮审计#61：下界过滤——早于本次服务器启动的栈不属于本次运行
+                if (t < notBeforeMs) continue;
                 if (t > bestTime) { bestTime = t; best = p; }
             }
         } catch (IOException ignored) {}
