@@ -90,36 +90,64 @@ public final class TicketScan {
         return new TicketInfo(count, uuids, Files.size(p));
     }
 
-    /** 返回 tickets 条数；遇到 uuid 形状的 int 数组就收集。递归下降足够小文件用。 */
+    /** 返回 tickets 条数；遇到 uuid 形状的 int 数组就收集。递归下降足够小文件用。
+     *  十轮审计#37：条数改为**按 data.tickets 列表长度**计（与 TicketPurge 用的官方
+     *  NbtIo 解析器同源同语义）。原实现用「uuid 形状的 int 数组个数」作条数：
+     *  - tickets 元素若是 compound 形态 → 自研解析器数出 0，官方解析器数出 N
+     *    → 面板显示 0 条、dry 预览说 0 条，而 purge 实际清掉 N 条（显示与实际不符）；
+     *  - tickets 之外还有别的 uuid 形状数组 → 自研解析器多计。
+     *  破坏性操作（purge）与显示（scan/dry）必须用**同一个**数字来源。 */
     private static int parse(byte[] b, List<UUID> uuids) {
         Counter c = new Counter();
+        boolean ok = true;
         try {
             readPayload(b, new Pos(), b.length, c, uuids, 0, true);
         } catch (RuntimeException ignored) {
             // 截断/损坏（越界、负 NBT 长度等）按已解析到的部分处理
+            ok = false;
         }
+        // 十轮审计#37：优先用 data.tickets 列表长度（与 TicketPurge 的官方解析器同源）。
+        // 解析中断（损坏）时列表长度不可信 → 回退启发式计数，并在调用处按"损坏"提示。
+        if (ok && c.ticketsCount >= 0) return c.ticketsCount;
         return c.count;
     }
 
-    private static final class Counter { int count; }
+    private static final class Counter { int count; int ticketsCount = -1; }
 
-    /** 跳过/解析一个 payload。end = payload 结束位置（exclusive）。root 层不消费 tag 头。 */
+    /** 跳过/解析一个 payload。end = payload 结束位置（exclusive）。root 层不消费 tag 头。
+     *  十轮审计#37：compound 的字段名不再直接丢弃——需要认出 data.tickets 才能按列表长度计条数。 */
     private static void readPayload(byte[] b, Pos p, int end, Counter counter, List<UUID> uuids, int depth, boolean root) {
         // 模糊审计洞1：原 depth>12 静默 return 不消耗任何字节——外层 for(n=0x7FFFFFFF) 循环
         // 变成 21 亿次空调用（等价死循环，数十字节 gzip 即可让启动体检挂死）。
         // 改抛异常：外层 catch(RuntimeException) 按损坏处理。
         if (depth > 12) throw new IllegalStateException("NBT depth > 12");
+        // 十轮审计#37：当前 compound 名（"data" / "tickets" 靠它匹配）
+        String curName = root ? "" : null;
         while (p.v < end) {
             int tag = b[p.v] & 0xFF;
             p.v++;
             if (tag == 0) return;                       // TAG_End
             int nameLen = ((b[p.v] & 0xFF) << 8) | (b[p.v + 1] & 0xFF);
             p.v += 2 + nameLen;                          // 跳过名字
+            // 十轮审计#37：解析字段名（NBT 名字是 UTF-8；票据文件里是 ASCII）。
+            // 名字起始 = p.v - nameLen；nameLen 异常大时 p.v 可能越过 end → 提取会越界 → 置 null。
+            String fieldName = null;
+            int nameStart = p.v - nameLen;
+            if (nameLen > 0 && nameStart >= 0 && nameLen <= b.length && nameStart + nameLen <= b.length) {
+                try {
+                    fieldName = new String(b, nameStart, nameLen, java.nio.charset.StandardCharsets.US_ASCII);
+                } catch (RuntimeException ignored) {}
+            }
+            if (fieldName != null) curName = fieldName;
             switch (tag) {
                 case 10 -> readPayload(b, p, end, counter, uuids, depth + 1, false); // compound 自行消费到 End
                 case 9 -> {
                     int elemTag = b[p.v] & 0xFF; p.v++;
                     int n = readLen(b, p);
+                    // 十轮审计#37：data.tickets 列表 → 条数按**列表长度**计（与官方解析器同源）
+                    if ("tickets".equals(curName) && counter.ticketsCount < 0) {
+                        counter.ticketsCount = n;
+                    }
                     if (elemTag == 10) {
                         // 元素 compound 里有 End tag，递归吃掉即可
                         // 十轮审计#5：n 不可信（最大 2^31-1），数据耗尽后递归空转——
