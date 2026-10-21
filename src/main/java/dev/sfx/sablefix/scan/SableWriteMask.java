@@ -215,6 +215,13 @@ public final class SableWriteMask {
             try {
                 Files.setAttribute(p, "dos:readonly", false);
                 n++;
+            } catch (java.nio.file.NoSuchFileException e) {
+                // 十轮审计#59：文件**已不存在**（fix 流程会删除旧的 slvlr）——这不是失败。
+                // 探针实测：Files.setAttribute 对不存在的文件抛 NoSuchFileException（IOException 子类），
+                // 原实现落入下面的 IOException 分支 → 报 ERROR「请手动取消只读！Sable 将无法保存
+                // 子层级！」→ 管理员对着一个**不存在的文件**无从下手，且这条 ERROR 还会**掩盖**
+                // 真正需要关注的失败（同样走 IOException 分支）。文件都没了，只读标记自然也不存在。
+                SableFixMod.LOGGER.debug("unmask: {} 已不存在，无需解锁（跳过）", p.getFileName());
             } catch (IOException e) {
                 SableFixMod.LOGGER.error("unmask: {} 恢复可写失败——请手动取消只读！Sable 将无法保存子层级！", p.getFileName());
             } catch (UnsupportedOperationException | IllegalArgumentException e) {
