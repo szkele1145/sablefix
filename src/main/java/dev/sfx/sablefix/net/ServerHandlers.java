@@ -301,7 +301,9 @@ public final class ServerHandlers {
                         level.getChunkSource().getLoadedChunksCount()));
             }
 
-            long uptime = System.currentTimeMillis() - SableFixMod.START_TIME;
+            // 十轮审计#60：用**服务器实例**运行时长，而不是 JVM 运行时长。
+            // 面板服换存档时 JVM 常驻 → 原来显示「已运行 24 小时」而服务器只开了 5 分钟。
+            long uptime = SableFixMod.serverUptimeMs();
 
             var logSnap = dev.sfx.sablefix.log.ModLog.snapshot();
             var logLines = new java.util.ArrayList<NetHandler.PanelData.LogRow>(logSnap.size() + 1);

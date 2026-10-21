@@ -31,7 +31,12 @@ public final class DiagReport {
                 .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))).append('\n');
         sb.append("版本: ").append(SableFixMod.VERSION).append("  协议: ")
                 .append(dev.sfx.sablefix.net.NetHandler.PROTOCOL_VERSION).append('\n');
-        sb.append("运行时长(ms): ").append(System.currentTimeMillis() - SableFixMod.START_TIME).append('\n');
+        // 十轮审计#60：用**服务器实例**运行时长。原先用 START_TIME（JVM 启动时刻）→
+        //  面板服换存档时 JVM 常驻 → 报告写「运行时长 86400000ms」而服务器只开了 5 分钟
+        //  → 维护者据此判断「跑了一天都没卡死」→ **误判**。
+        sb.append("运行时长(ms): ").append(dev.sfx.sablefix.SableFixMod.serverUptimeMs()).append('\n');
+        sb.append("进程启动时间: ").append(new java.util.Date(dev.sfx.sablefix.SableFixMod.START_TIME))
+                .append("  (面板服换存档时 JVM 常驻，与上面的运行时长不同)\n");
         sb.append("NeoForge: ").append(net.neoforged.fml.loading.FMLLoader.versionInfo().neoForgeVersion()).append('\n');
         sb.append('\n');
 

@@ -26,8 +26,23 @@ public class SableFixMod {
     public static final String TG_URL = "https://t.me/maodie_mods";
     public static final String QQ_GROUP = "1129543042";
     public static final Logger LOGGER = LoggerFactory.getLogger("SableFix");
-    /** 进程启动时间（面板显示运行时长用） */
+    /** 进程启动时间（进程级，不会随服务器实例重置） */
     public static final long START_TIME = System.currentTimeMillis();
+    /** 十轮审计#60：**服务器实例**启动时刻。START_TIME 是 JVM 启动时刻，跨存档**不变**
+     *  （面板服换存档、单人世界重开时 JVM 常驻）→ 面板与报告里的「运行时长」会显示
+     *  「已运行 24 小时」而服务器其实只开了 5 分钟 → 维护者据此判断「跑了很久都没卡死」→
+     *  **误判**。START_TIME 保留给进程级用途，这里记实例级。 */
+    private static volatile long serverStartTime = System.currentTimeMillis();
+
+    /** 本次服务器实例的启动时刻（毫秒）。 */
+    public static long serverStartTimeMs() {
+        return serverStartTime;
+    }
+
+    /** 本次服务器实例的运行时长（毫秒）。 */
+    public static long serverUptimeMs() {
+        return System.currentTimeMillis() - serverStartTime;
+    }
 
     public SableFixMod(IEventBus modBus) {
         // mod bus：网络包注册
@@ -43,6 +58,9 @@ public class SableFixMod {
     }
 
     private void onServerStarted(ServerStartedEvent event) {
+        // 十轮审计#60：记录**服务器实例**启动时刻（面板/报告的「运行时长」用）。
+        // 必须在任何耗时初始化之前取，保证时长反映本次实例的真实运行时间。
+        serverStartTime = System.currentTimeMillis();
         // 十轮审计#18：静态会话状态随服务器实例重置——扫描缓存里还是上一个存档的报告
         // （启动扫描是异步的，这期间面板会显示别的存档的文件名/损伤数）。
         dev.sfx.sablefix.net.ServerHandlers.resetScanCache();
