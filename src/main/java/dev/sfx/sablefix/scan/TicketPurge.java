@@ -73,7 +73,11 @@ public final class TicketPurge {
         for (int i = 1; Files.exists(backup) && i < 1000; i++) {
             backup = backupDir.resolve(p.getFileName() + "." + stamp + "-" + i + ".bak");
         }
-        Files.copy(p, backup);   // 不带 REPLACE_EXISTING：已存在则抛 FileAlreadyExistsException（宁可失败也不覆盖备份）
+        // 十轮审计#39：备份**必须落盘**才能算备份（同 SubLevelRepair#38）。
+        //  原用 Files.copy：只写进 page cache 就返回 → 此刻断电/强制重启 → 备份存在但内容
+        //  是空的或半截，而票据文件已被清空 → 数据不可恢复，管理员却以为"有备份"。
+        //  SafeCopy 额外做 force(true)，且保持"已存在则抛、绝不覆盖备份"的语义。
+        SafeCopy.copyAndSync(p, backup);
 
         CompoundTag root = parsed.root();
         CompoundTag data = root.getCompound("data");
