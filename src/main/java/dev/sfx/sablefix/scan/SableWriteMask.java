@@ -150,6 +150,12 @@ public final class SableWriteMask {
                     }
                 } catch (IOException e) {
                     SableFixMod.LOGGER.warn("mask: {} 设置只读失败（继续）", p.getFileName());
+                } catch (UnsupportedOperationException | IllegalArgumentException e) {
+                    // 十轮审计#35：属性不可用（RuntimeException）**不能中断屏蔽循环**。
+                    // L140 的 dosSupported 已按卷拦截「整卷不支持」，但同一卷根下的不同挂载点
+                    // 支持性可能不同 → 单个文件抛 UOE 不能让后续文件全部漏屏蔽
+                    // （漏屏蔽 = Sable 写回会覆盖刚清零的槽位 = P0 修复失效）。
+                    SableFixMod.LOGGER.warn("mask: {} 不支持只读属性（跳过，继续其余文件）", p.getFileName());
                 }
             }
         } catch (IOException e) {
@@ -170,6 +176,12 @@ public final class SableWriteMask {
                 n++;
             } catch (IOException e) {
                 SableFixMod.LOGGER.error("unmask: {} 恢复可写失败——请手动取消只读！Sable 将无法保存子层级！", p.getFileName());
+            } catch (UnsupportedOperationException | IllegalArgumentException e) {
+                // 十轮审计#35：属性不可用（RuntimeException）**不能中断循环**——
+                // 原实现让它冒泡 → 后续文件全部不解锁 → 那些文件永久残留只读 →
+                // Sable 静默写不回子层级进度（这正是本方法要防的最严重后果）。
+                // 该文件本来就没有只读标记（或属性视图不可用），无需处理，继续下一个。
+                SableFixMod.LOGGER.warn("unmask: {} 不支持只读属性（跳过，继续其余文件）", p.getFileName());
             }
         }
         SableFixMod.LOGGER.warn("unmask: {} 个文件已恢复可写", n);
