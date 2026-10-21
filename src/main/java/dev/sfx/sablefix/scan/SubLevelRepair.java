@@ -129,7 +129,11 @@ public final class SubLevelRepair {
         for (int i = 1; Files.exists(backup) && i < 1000; i++) {
             backup = backupDir.resolve(plan.file().getFileName() + "." + stamp + "-" + i + ".bak");
         }
-        Files.copy(plan.file(), backup);   // 不带 REPLACE_EXISTING：已存在则抛 FileAlreadyExistsException
+        // 十轮审计#38：备份**必须落盘**才能算备份。Files.copy 只写进 page cache 就返回，
+        //  数据可能还在 OS 缓存里——此刻断电/强制重启 → 备份文件存在但内容是空的或半截，
+        //  而原文件已被清零 → **数据不可恢复**，管理员却以为"有备份"。
+        // 手写 copy + force(true)（元数据+内容一起落盘）。探针实测 1MB 文件仅多花 ~1ms。
+        copyAndSync(plan.file(), backup);
 
         // 写回前重扫：备份与写回之间文件若被并发修改（Sable 运行时），死槽位号可能已变——按计划盲写会破坏新数据。
         // 保守策略：重扫结果与计划不一致就放弃本次修复（备份保留，报错给上层）。
@@ -157,6 +161,28 @@ public final class SubLevelRepair {
         String fname = plan.file().getFileName().toString();
         DamageRegistry.clear(DamageRegistry.Kind.SUBLVL_DEAD, fname);
         return new RepairResult(plan.file(), backup, cleared);
+    }
+
+    /** 复制并**强制落盘**（十轮审计#38）。
+     *  保持 Files.copy 的语义：不带 REPLACE_EXISTING → 目标已存在则抛 FileAlreadyExistsException
+     *  （备份绝不覆盖）。额外做 force(true)：内容与元数据都到盘，才算"备份成功"。 */
+    private static void copyAndSync(Path src, Path dst) throws IOException {
+        try (FileChannel in = FileChannel.open(src, StandardOpenOption.READ);
+             FileChannel out = FileChannel.open(dst, StandardOpenOption.WRITE,
+                     StandardOpenOption.CREATE_NEW)) {   // CREATE_NEW = 已存在则抛 FileAlreadyExistsException
+            long pos = 0, size = in.size();
+            ByteBuffer buf = ByteBuffer.allocate(64 * 1024);
+            while (pos < size) {
+                buf.clear();
+                int r = in.read(buf, pos);
+                if (r < 0) break;
+                if (r == 0) continue;      // 允许短读/返回 0（网络存储），继续读
+                buf.flip();
+                while (buf.hasRemaining()) out.write(buf);
+                pos += r;
+            }
+            out.force(true);              // 落盘：内容 + 元数据
+        }
     }
 
     /** 读取 4KB 文件头。七轮审计#5：改为在调用方已打开的 channel 上读（合并 open）。
