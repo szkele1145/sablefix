@@ -290,6 +290,12 @@ public final class SfxCommands {
     private static int repair(CommandSourceStack src, String fileName, boolean doApply) {
         try {
             Path dir = src.getServer().getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
+            // 十轮审计#44：dir 必须**也**归一化——原来只归一化 target、拿未归一化的 dir 去比：
+            //   dir 含 ".." 时（管理员用 --world-path "C:\server\world\..\world" 启动即可出现），
+            //   target 归一化后变成 "...\world\sublevels\x" 而 dir 仍是 "...\world\..\world\sublevels"
+            //   → startsWith 恒为 false → **所有修复请求都被判越界** → 修复功能完全不可用。
+            // 两侧都归一化后再比，路径穿越防护不受影响（探针实测 C:..\..\evil.txt 与 C:\abs.txt 仍被拦）。
+            dir = dir.normalize();
             Path target = dir.resolve(fileName).normalize();
             if (!target.startsWith(dir) || !java.nio.file.Files.exists(target)) {
                 // 大小写容错：遍历目录找忽略大小写的同名文件（玩家手输大小写经常不准）

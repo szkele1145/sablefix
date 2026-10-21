@@ -380,18 +380,23 @@ public final class ServerHandlers {
 
     /** 删除单个备份文件（仅允许 backups/sablefix 下的纯文件名，防路径遍历），不存在抛 NoSuchFileException。 */
     public static void deleteBackup(MinecraftServer server, String name) throws IOException {
-        // 十轮审计#20：原实现只黑名单 '/' 与 '\\' → **盘符相对路径可逃逸**（实测）：
-        //   Path.resolve("C:server.properties") 在 Windows 上返回 "C:server.properties"
-        //   （驱动器相对路径 = C 盘当前目录 = 服务器启动目录），不含 '/' 也不含 '\\'
-        //   → 原校验放行 → isRegularFile 为真 → **删掉了服务器的 server.properties**。
-        // 正确模式与 onRepairReq 一致：resolve → normalize → startsWith 白名单校验。
-        // 另加 ':' 黑名单（盘符与 NTFS 备用数据流 x::$DATA）、"."/".." 显式拒绝。
+        // 十轮审计#20：原实现只黑名单 '/' 与 '\\' → 盘符写法可逃逸。
+        // 十轮审计#44 **更正**该注释的结论（探针实测，勿凭直觉）：
+        //   Path.resolve("C:server.properties") 在 Windows 上**不会**返回 "C:server.properties"，
+        //   JDK 在 resolve 时**丢弃盘符前缀** → 结果是 <base>\server.properties（不逃逸）。
+        //   真正会逃逸的是 "C:..\..\evil.txt"（→ <base>\..\..\evil.txt）和 "C:\abs.txt"
+        //   （→ 绝对路径），两者都被 startsWith 白名单拦住 ✅。
+        //   另加 ':' 黑名单（盘符与 NTFS 备用数据流 x::$DATA）、"."/".." 显式拒绝。
         if (name == null || name.isEmpty()
                 || name.contains("/") || name.contains("\\") || name.contains(":")
                 || name.equals(".") || name.equals("..")) {
             throw new IllegalArgumentException("非法备份文件名: " + name);
         }
         Path backupDir = worldDir(server).resolve("backups").resolve("sablefix");
+        // 十轮审计#44：dir 也要**归一化**（同 onRepairReq）——只归一化 target、拿未归一化的
+        // dir 去比 → dir 含 ".." 时（--world-path 带相对段即可出现）startsWith 恒 false
+        // → **所有备份都删不掉**。两侧都归一化后再比，穿越防护不受影响。
+        backupDir = backupDir.normalize();
         Path target = backupDir.resolve(name).normalize();
         if (!target.startsWith(backupDir) || !Files.isRegularFile(target)) {
             throw new java.nio.file.NoSuchFileException(target.toString());
@@ -444,6 +449,10 @@ public final class ServerHandlers {
         try {
             MinecraftServer server = player.getServer();
             Path dir = worldDir(server).resolve("sublevels");
+            // 十轮审计#44：dir 也要**归一化**（与 SfxCommands.repair 同构）。只归一化 target、
+            // 拿未归一化的 dir 去比 → dir 含 ".." 时（--world-path 带相对段即可出现）
+            // startsWith 恒 false → **所有面板修复请求都被判越界** → 修复功能不可用。
+            dir = dir.normalize();
             Path target = dir.resolve(req.file()).normalize();
             if (!target.startsWith(dir) || !Files.exists(target)) {
                 ctx.reply(new NetHandler.RepairRes(false, req.apply(), req.file(), 0, "", "",
