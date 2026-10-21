@@ -98,4 +98,13 @@ public final class ModLog {
     public static synchronized List<Entry> snapshot() {
         return new ArrayList<>(BUF);
     }
+
+    /** 清空环形缓冲（十轮审计#32）：BUF 是 static，跨服务器实例存活。
+     *  同一 JVM 重开服务器（面板服换存档、单人世界重开）时，日志页会混着**上一个存档**的
+     *  扫描/修复记录（含旧文件名、旧路径、旧损伤数）——管理员会照着这些记录去查当前存档里
+     *  根本不存在的文件。与 SCAN_CACHE / SCAN_RUNNING 同族：会话状态随服务器实例重置。
+     *  注意：只清缓冲，不影响已打印到控制台的历史日志（那是 LOGGER 的职责）。 */
+    public static synchronized void clearForNewSession() {
+        BUF.clear();
+    }
 }

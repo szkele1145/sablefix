@@ -46,6 +46,10 @@ public class SableFixMod {
         // 十轮审计#18：静态会话状态随服务器实例重置——扫描缓存里还是上一个存档的报告
         // （启动扫描是异步的，这期间面板会显示别的存档的文件名/损伤数）。
         dev.sfx.sablefix.net.ServerHandlers.resetScanCache();
+        // 十轮审计#32：模组内部日志同样是会话状态——不清的话新存档的日志页会混着
+        // 上一个存档的扫描/修复记录（旧文件名、旧路径），管理员据此去查当前存档里
+        // 不存在的文件。位置必须在启动体检之前（否则体检自己写的记录也会被清掉）。
+        dev.sfx.sablefix.log.ModLog.clearForNewSession();
         ThreadWatchdog.start();
         SaveObserver.start(event.getServer());
         // 损伤登记簿：锚定/载入持久化清单（重启不丢），体检结果随后登记。
