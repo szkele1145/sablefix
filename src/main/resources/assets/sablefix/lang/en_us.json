@@ -143,6 +143,7 @@
   "sablefix.panel.scanning": "Background scan running…",
   "sablefix.panel.scanning_retry": "Auto-refreshes when done (retrying every ~2 s)",
   "sablefix.panel.tickets_stats": "%s tickets / %s unique",
+  "sablefix.panel.tickets_stats_partial": "%s tickets / %s unique (sample)",
   "sablefix.cmd.help_repair_all": "repair every problem file (dry summary / apply with per-file backup)",
   "sablefix.cmd.repair_all_nothing": "Nothing to repair",
   "sablefix.cmd.repair_all_plan": "Repair-all plan: %s file(s), %s dead slot(s):",

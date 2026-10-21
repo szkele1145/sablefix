@@ -143,6 +143,7 @@
   "sablefix.panel.scanning": "后台扫描中…",
   "sablefix.panel.scanning_retry": "扫描完成后自动刷新（约 2 秒重试一次）",
   "sablefix.panel.tickets_stats": "%s 条 / %s 个唯一",
+  "sablefix.panel.tickets_stats_partial": "%s 条 / %s 个唯一（样本）",
   "sablefix.cmd.help_repair_all": "批量修复全部问题文件（dry 预览汇总 / apply 逐个备份执行）",
   "sablefix.cmd.repair_all_nothing": "没有需要修复的文件",
   "sablefix.cmd.repair_all_plan": "批量修复计划：%s 个文件，共 %s 个死槽：",

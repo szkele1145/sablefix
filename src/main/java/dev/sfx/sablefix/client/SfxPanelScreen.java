@@ -371,6 +371,12 @@ public class SfxPanelScreen extends Screen {
     private int statIssueFiles;      // 有问题的文件数（health 横幅用）
     private java.util.Map<String, Integer> ticketCounts;  // uuid -> 次数（pageWatch 聚合）
     private int ticketTotal, ticketUnique;
+    // 十轮审计#52：唯一数是否**可能不完整**——服务端下发的 uuid 列表有两处会短于真实票据数：
+    //  1) 网络侧硬截断（NetHandler 写侧 maxUuids=512）；
+    //  2) 自研解析器只认 uuid 形状的 int 数组（tickets 元素是 compound 形态时一条都收集不到，
+    //     见 TicketScan#37 的说明——而条数用的是官方解析器的列表长度，两者可以不同）。
+    // 这时统计行里的「唯一数」只是**样本**，必须标明，否则与首页的权威条数自相矛盾。
+    private boolean ticketUniquePartial;
     private java.util.List<NetHandler.PanelData.FileRow> browseCache;  // 排序+过滤结果缓存
 
     private void precomputePanelStats() {
@@ -384,8 +390,17 @@ public class SfxPanelScreen extends Screen {
         var counts = new java.util.LinkedHashMap<String, Integer>();
         for (String u : data.ticketUuids()) counts.merge(u, 1, Integer::sum);
         ticketCounts = counts;
-        ticketTotal = data.ticketUuids().size();
+        // 十轮审计#52：条数改用服务端下发的**权威** ticketCount（首页 L687 用的就是它）。
+        // 原实现用 data.ticketUuids().size()——那是**网络截断后**（写侧 maxUuids=512）的长度，
+        // 同一屏里首页说 30000 条、监视页说 512 条，自相矛盾。
+        // ticketCount < 0 = 服务端读票据失败（首页显示「读取失败」）→ 这里置 0，
+        // 监视页同样显示失败标记，不显示 0 条。
+        ticketTotal = data.ticketCount() < 0 ? 0 : data.ticketCount();
         ticketUnique = counts.size();
+        // 唯一数是否只是样本：判据是**下发的 uuid 条数**少于权威条数（网络截断，或票据元素
+        // 是 compound 形态导致一条都收集不到）。不能用「唯一数 < 条数」当判据——同一 uuid
+        // 开了多张票时唯一数天然小于条数，那是**真实**情况，不是样本。
+        ticketUniquePartial = data.ticketUuids().size() < ticketTotal;
     }
 
     private int scanRetries;
@@ -1159,13 +1174,23 @@ public class SfxPanelScreen extends Screen {
         var counts = ticketCounts;
         int total = ticketTotal, unique = ticketUnique;
         g.drawString(font, L("sablefix.panel.ticket_uuids"), x + 12, ty + 8, withA(DIM, a), false);
-        g.drawString(font, L("sablefix.panel.tickets_stats", total, unique), x + w - 12 - font.width(L("sablefix.panel.tickets_stats", total, unique)), ty + 8, withA(ACC, a), false);
+        // 十轮审计#52：唯一数不完整时标明（下游下发的 uuid 列表被截断，或票据元素是 compound
+        // 形态导致一条都收集不到）——否则「30000 条 / 0 个唯一」看起来像 bug 而不是「样本」。
+        // 顺带把统计行文本算一次（原来每帧算两遍：L(...) + font.width(...)）。
+        // ticketCount < 0 = 服务端读票据失败 → 与首页同样显示「读取失败」，不再显示 0 条。
+        String statsText = (data.ticketCount() < 0) ? L("sablefix.panel.ticket_fail")
+                : (ticketUniquePartial
+                        ? L("sablefix.panel.tickets_stats_partial", total, unique)
+                        : L("sablefix.panel.tickets_stats", total, unique));
+        int statsW = font.width(statsText);
+        g.drawString(font, statsText, x + w - 12 - statsW, ty + 8,
+                withA(data.ticketCount() < 0 ? BAD : ACC, a), false);
 
         // 清理按钮（统计行左侧空间够时显示）：三态 = 正常 / 确认
         // 阈值 470：720p auto-scale 2x 下逻辑宽 504，560 会把按钮挤掉
         if (total > 0 && w > 470) {
             int bw = 88;
-            int bx = x + w - 12 - bw - font.width(L("sablefix.panel.tickets_stats", total, unique)) - 14;
+            int bx = x + w - 12 - bw - statsW - 14;
             boolean confirm = purgeConfirm;
             boolean hov = inBox(mx, my, bx, ty + 3, bw, 18);
             int bfill = confirm ? (hov ? 0x66E05D5D : 0x40E05D5D) : (hov ? 0x3F7DBAFF : 0x227DBAFF);
