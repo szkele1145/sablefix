@@ -203,12 +203,21 @@ public final class ThreadWatchdog {
 
     private static void pruneOldDumps(Path dir) {
         try (var stream = Files.list(dir)) {
+            // 十轮审计#50：取不到修改时间的文件**不能当"最旧"**——原实现 catch 后返回 0L，
+            // 于是它排在最前 → **第一个被删**。而「读不到 mtime」（文件正被写/被占用/权限不足）
+            // 并不代表它旧，恰恰可能是**刚写的那一份**（唯一一份卡死现场）→ 被误删。
+            // 改为：读不到 mtime 就**跳过该文件**——既不参与排序、也不参与删除计数
+            // （配额语义变成「保留 50 份**可识别的**栈」）。读不到 mtime 通常是**瞬时**状态
+            // （文件正被写），下一轮就能读到 → 自动归队，不会长期累积。
             var files = stream.filter(p -> {
                         String n = p.getFileName().toString();
                         return n.startsWith("threaddump-") && n.endsWith(".txt");
+                    }).filter(p -> {
+                        try { Files.getLastModifiedTime((Path) p); return true; }
+                        catch (IOException e) { return false; }
                     }).sorted(java.util.Comparator.comparingLong(p -> {
                         try { return Files.getLastModifiedTime((Path) p).toMillis(); }
-                        catch (IOException e) { return 0L; }
+                        catch (IOException e) { return 0L; }   // 排序期间再读失败：仍按 0 处理
                     }).reversed())
                     .toList();
             for (int i = MAX_DUMPS_KEPT; i < files.size(); i++) {
