@@ -29,8 +29,12 @@ public final class NetHandler {
      *      塞在 msg 里，客户端靠找 ']' 猜切分点 → 正文含 ']' 时错位）——载荷格式变更
      *  v9: 面板数据新增 backupTotal（备份**总数**）字段，备份清单只下发前 8 条
      *      （原来发 64 条而客户端只用 8 条；且客户端「还有 N 条」用的是截断值 64-8=56，
-     *      真实 200 份时用户以为只有 64 份 → 磁盘占用被严重低估）——载荷格式变更 */
-    public static final String PROTOCOL_VERSION = "9";
+     *      真实 200 份时用户以为只有 64 份 → 磁盘占用被严重低估）——载荷格式变更
+     *  v10: 同族收口：fileTotal（文件**总数**）+ logTotal（日志**总数**）字段。
+     *      写侧防帧超限把 files 截到 512、logs 截到 150 → 客户端列表长度**不是**真实总数，
+     *      超过阈值时用户不知道还有更多（浏览页滚动到底也只到第 512 个；日志页缺最新
+     *      150 条之外的更早行）——「截断值当完整列表」与 #73（备份总数）同根因。 */
+    public static final String PROTOCOL_VERSION = "10";
 
     public static void register(net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent event) {
         PayloadRegistrar reg = event.registrar(PROTOCOL_VERSION);
@@ -76,11 +80,11 @@ public final class NetHandler {
      *  实际有 200 份时用户以为只有 64 份 → 磁盘占用被严重低估。总数单独下发。
      *  BackupRow.ageMs 同理由服务端算好。 */
     public record PanelData(
-            List<FileRow> files,
+            List<FileRow> files, int fileTotal,
             int ticketCount, List<String> ticketUuids,
             long lastTickGapMs, int dumpCount, long uptimeMs,
             List<DimRow> dims,
-            List<LogRow> logLines, boolean scanning,
+            List<LogRow> logLines, int logTotal, boolean scanning,
             long lastStallAgoMs,
             List<BackupRow> backups, int backupTotal) implements CustomPacketPayload {
 
@@ -190,6 +194,9 @@ public final class NetHandler {
                 : p.logLines;
 
         f.writeVarInt(files.size());
+        // 十轮审计#74：真实**总数**随列表下发（列表被截到 512 后，客户端拿列表长度
+        // 当总数会少报——浏览页需要知道「下面还有多少没发来」）。
+        f.writeVarInt(Math.max(p.files.size(), files.size()));
         for (PanelData.FileRow r : files) {
             // 十轮审计#2：文件名可能超 128B（Sable 子区域名含区域标题，NTFS 单名上限 255 字符），
             // 备份名 = 原名 + 时间戳后缀更容易超 192B——写侧必须截断，否则 EncoderException 断连。
@@ -212,6 +219,8 @@ public final class NetHandler {
             f.writeVarInt(d.blockEntities()); f.writeVarInt(d.chunks());
         }
         f.writeVarInt(logs.size());
+        // 十轮审计#74：日志**总数**（写侧截到 150 条最新）——客户端要能说清「更早的还有多少行」
+        f.writeVarInt(Math.max(p.logLines.size(), logs.size()));
         for (PanelData.LogRow r : logs) writeLogRow(f, r);
         f.writeBoolean(p.scanning());
         f.writeVarLong(p.lastStallAgoMs);
@@ -231,6 +240,7 @@ public final class NetHandler {
         // 模糊审计：readVarInt 可为负 → new ArrayList<>(负) 抛 IAE 踢客户端。四处 clamp 到 ≥0。
         // 六审#1：readUtf 补显式上限与写侧逐字对齐（纵深防御——恶意/损坏包不依赖 32767 默认值）
         int n = clampCount(f.readVarInt(), MAX_FILES);
+        int fileTotal = clampCount(f.readVarInt(), MAX_FILES);
         List<PanelData.FileRow> files = new ArrayList<>(Math.min(n, 1024));
         for (int i = 0; i < n; i++) {
             files.add(new PanelData.FileRow(f.readUtf(128), f.readBoolean(), f.readVarLong(), f.readVarInt(), f.readVarInt()));
@@ -248,6 +258,7 @@ public final class NetHandler {
             dims.add(new PanelData.DimRow(f.readUtf(128), f.readVarInt(), f.readVarInt(), f.readVarInt()));
         }
         int ln = clampCount(f.readVarInt(), MAX_LOGS);
+        int logTotal = clampCount(f.readVarInt(), MAX_LOGS);
         List<PanelData.LogRow> logs = new ArrayList<>(Math.min(ln, 200));
         for (int i = 0; i < ln; i++) logs.add(readLogRow(f));
         boolean scanning = f.readBoolean();
@@ -258,7 +269,8 @@ public final class NetHandler {
             backups.add(new PanelData.BackupRow(f.readUtf(192), f.readVarLong(), f.readVarLong()));
         }
         int backupTotal = clampCount(f.readVarInt(), 1_000_000);
-        return new PanelData(files, tc, uuids, gap, dumps, up, dims, logs, scanning, stallAgo, backups, backupTotal);
+        return new PanelData(files, fileTotal, tc, uuids, gap, dumps, up, dims, logs, logTotal,
+                scanning, stallAgo, backups, backupTotal);
     }
 
     /** VarInt 长度防御：负值按 0 处理（恶意/损坏包不踢客户端） */

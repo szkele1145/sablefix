@@ -205,5 +205,9 @@
   "sablefix.cmd.backup_purge_done": "已清空 %s 份备份",
   "sablefix.cmd.backup_purge_fail": "清空备份失败：%s",
   "sablefix.cmd.backup_purge_locked": "清空备份被占用（部分文件被游戏或其他进程锁定），未删除任何文件",
+  "sablefix.panel.file_count": "%s 个文件",
+  "sablefix.panel.list_truncated": "共 %s 个，已列出前 %s 个",
+  "sablefix.panel.log_count": "%s 行日志",
+  "sablefix.panel.log_truncated": "另有 %s 行更早的未下发",
   "sablefix.damage.stale_notice": "§6[SableFix] §c检测到 %s 个子层级文件残留只读（上次 fix 被中断）——用 /sablefix unmask 解除，Sable 才能保存进度"
 }

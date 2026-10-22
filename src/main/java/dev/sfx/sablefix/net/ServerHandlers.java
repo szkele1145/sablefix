@@ -340,9 +340,10 @@ public final class ServerHandlers {
             long stallAt = ThreadWatchdog.lastStallAtMs();
             long stallAgo = stallAt == 0 ? -1 : Math.max(0, System.currentTimeMillis() - stallAt);
             NetHandler.PanelData data = new NetHandler.PanelData(
-                    files, ticketCount, uuids,
+                    files, files.size(),
+                    ticketCount, uuids,
                     ThreadWatchdog.lastTickGapMs(), ThreadWatchdog.dumpCount(), uptime, dims,
-                    logLines, cached == COLD_SCAN || cached == SCAN_FAILED,
+                    logLines, logLines.size(), cached == COLD_SCAN || cached == SCAN_FAILED,
                     stallAgo,
                     cached.backups(),
                     // 十轮审计#73：备份**总数**单独下发（列表在下发侧截断到 8 条）。

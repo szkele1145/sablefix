@@ -229,7 +229,7 @@ public class SfxPanelScreen extends Screen {
                 new NetHandler.PanelData.LogRow("WARN", "16:34:23.602", "sablefix.scan.slvlr_dead", java.util.List.of("r.-4.7.slvlr", "3", "74"), ""),
                 new NetHandler.PanelData.LogRow("INFO", "16:34:23.711", "sablefix.scan.tickets_ok", java.util.List.of("19", "707"), ""),
                 new NetHandler.PanelData.LogRow("INFO", "16:51:08.332", null, java.util.List.of(), "panel request: Dev@[/127.0.0.1]"));
-        return new NetHandler.PanelData(files, 19, uuids, 41, 0, 22_320_000L, dims, logs, false, -1, java.util.List.of(), 0);
+        return new NetHandler.PanelData(files, files.size(), 19, uuids, 41, 0, 22_320_000L, dims, logs, logs.size(), false, -1, java.util.List.of(), 0);
     }
 
     static NetHandler.DiagRes demoDiag() {
@@ -1053,6 +1053,14 @@ public class SfxPanelScreen extends Screen {
         g.drawString(font, L("sablefix.panel.col_size"), sizeX, hy, withA(FAINT, a), false);
         g.drawString(font, L("sablefix.panel.col_live"), liveX, hy, withA(FAINT, a), false);
         g.drawString(font, L("sablefix.panel.col_status"), stX, hy, withA(FAINT, a), false);
+        // 十轮审计#74：标题右侧显示文件**总数**（服务端真实数量，非下发截断值）。
+        // 超过下发上限（512）时明确说「只显示前 N 个」——否则用户滚动到底以为看全了，
+        // 漏掉的文件（含可能有问题的）永远看不到。
+        int fileTotalReal = Math.max(data.fileTotal(), data.files().size());
+        String fileCt = fileTotalReal > data.files().size()
+                ? L("sablefix.panel.list_truncated", data.files().size(), fileTotalReal)
+                : L("sablefix.panel.file_count", fileTotalReal);
+        g.drawString(font, fileCt, x + w - 16 - font.width(fileCt), hy, withA(FAINT, a), false);
 
         // 行区滚动裁剪
         int rowsTop = ly + 20;
@@ -1348,6 +1356,13 @@ public class SfxPanelScreen extends Screen {
         boolean scrolled = logScroll > 0;
         g.drawString(font, L("sablefix.panel.log_title") + (scrolled ? L("sablefix.panel.log_scrolled", (int) logScroll) : ""),
                 x + 10, ly + 6, withA(FAINT, a), false);
+        // 十轮审计#74：右侧显示日志**总数**（ModLog 环形 200 条；下发截到最新 150 条，
+        // 被截掉的是**更早的**行——用户需要知道顶部之外还有多少没发来）。
+        int logTotalReal = Math.max(data.logTotal(), data.logLines().size());
+        String logCt = logTotalReal > data.logLines().size()
+                ? L("sablefix.panel.log_truncated", logTotalReal - data.logLines().size())
+                : L("sablefix.panel.log_count", logTotalReal);
+        g.drawString(font, logCt, x + w - 12 - font.width(logCt), ly + 6, withA(FAINT, a), false);
         int rowH = 12;
         // 给头部 16px、底部提示 14px 留位，防最后一行贴边/被压
         int maxRows = Math.max(1, (cardH - 32) / rowH);
