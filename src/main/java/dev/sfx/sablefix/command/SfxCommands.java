@@ -257,6 +257,8 @@ public final class SfxCommands {
             }
             final int fOk = okFiles, fFail = failFiles, fCleared = cleared;
             final Path fBackup = lastBackup;
+            // 十轮审计#68：批量修复改变了世界 → 作废面板缓存（否则 TTL 60s 内面板仍显示旧状态）
+            if (okFiles > 0) dev.sfx.sablefix.net.ServerHandlers.resetScanCache();
             server.execute(() -> {
                 src.sendSuccess(() -> tr("sablefix.cmd.repair_all_done", fOk, fFail, fCleared), false);
                 if (fBackup != null) src.sendSuccess(() -> tr("sablefix.cmd.repair_backup_in", fBackup.getParent().toString()), false);
@@ -336,6 +338,9 @@ public final class SfxCommands {
                 return 1;
             }
             SubLevelRepair.RepairResult res = SubLevelRepair.apply(plan);
+            // 十轮审计#68：修复改变了世界 → 面板缓存必须作废。否则 TTL（60s）内面板
+            // 仍显示修复前的文件状态（死指针数），管理员「修完了怎么面板还显示损坏？」。
+            dev.sfx.sablefix.net.ServerHandlers.resetScanCache();
             src.sendSuccess(() -> tr("sablefix.cmd.repair_done", res.cleared(), res.backup().toString()), false);
             src.sendSuccess(() -> tr("sablefix.cmd.repair_restart_hint"), false);
             return 1;
@@ -666,6 +671,9 @@ public final class SfxCommands {
                 return 1;
             }
             Path backup = TicketPurge.purge(tf);
+            // 十轮审计#68：purge 改变了票据文件 → 面板缓存必须作废。
+            // 否则 TTL（60s）内面板仍显示**旧**票据数（与 /sablefix tickets 的输出对不上）。
+            dev.sfx.sablefix.net.ServerHandlers.resetScanCache();
             src.sendSuccess(() -> tr("sablefix.cmd.purge_done", n, backup.toString()), false);
             src.sendSuccess(() -> tr("sablefix.cmd.purge_restart_hint"), false);
             return 1;
