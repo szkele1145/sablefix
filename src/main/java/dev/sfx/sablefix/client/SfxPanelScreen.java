@@ -1137,6 +1137,28 @@ public class SfxPanelScreen extends Screen {
         g.drawString(font, String.valueOf(diagRes.entities()), x + 90, cy2 + 58, withA(TEXT, a), false);
         g.drawString(font, L("sablefix.panel.diag_be"), x + 22, cy2 + 76, withA(FAINT, a), false);
         g.drawString(font, String.valueOf(diagRes.blockEntities()), x + 90, cy2 + 76, withA(TEXT, a), false);
+        // 十轮审计#64：输入框改了但没点「诊断」时，下面显示的仍是**上一次**的坐标的结果。
+        // 状态行里虽有旧坐标（"(x, z)"），但那是括号里的小字，管理员读实体数/方块数时
+        // 不会注意到 → 会把**别的坐标**的数据当成当前输入的坐标 → **结论全错**。
+        // 此刻给出醒目提示：参数已改，结果不是这个坐标的。
+        if (diagParamsChanged()) {
+            g.drawString(font, L("sablefix.panel.diag_stale"), x + 22, cy2 + 94, withA(WARN, a), false);
+        }
+    }
+
+    /**
+     * 诊断输入框当前值是否与已显示结果的坐标不一致（十轮审计#64）。
+     * 输入框非法（空/非数字）时不算「改了」——那本来就是让用户去改的。
+     */
+    private boolean diagParamsChanged() {
+        if (diagRes == null) return false;
+        try {
+            int x = Integer.parseInt(xBox.getValue().trim());
+            int z = Integer.parseInt(zBox.getValue().trim());
+            return x != diagRes.x() || z != diagRes.z();
+        } catch (Exception e) {
+            return false;   // 输入非法/为空：不算「参数已改」
+        }
     }
 
     // ---- 监视 ----

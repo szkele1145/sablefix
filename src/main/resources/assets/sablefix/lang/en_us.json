@@ -35,6 +35,7 @@
   "sablefix.panel.diag_wait": "Waiting for query…",
   "sablefix.panel.diag_dim": "Dimension",
   "sablefix.panel.diag_be": "Block entities",
+  "sablefix.panel.diag_stale": "⚠ Coordinates changed — showing the previous query. Press Diagnose again.",
   "sablefix.panel.watch_ok": "💓 Main thread healthy — tick gap %s ms",
   "sablefix.panel.watch_lag": "⚠ Main thread lagging — tick gap %s ms",
   "sablefix.panel.watch_threshold": "Dump threshold",

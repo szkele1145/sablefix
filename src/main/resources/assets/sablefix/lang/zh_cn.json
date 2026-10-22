@@ -35,6 +35,7 @@
   "sablefix.panel.diag_wait": "等待查询…",
   "sablefix.panel.diag_dim": "维度",
   "sablefix.panel.diag_be": "方块实体",
+  "sablefix.panel.diag_stale": "⚠ 坐标已改 — 下面是上一次的查询结果，请重新点「诊断」",
   "sablefix.panel.watch_ok": "💓 主线程正常 — tick 间隔 %s ms",
   "sablefix.panel.watch_lag": "⚠ 主线程疑似卡顿 — tick 间隔 %s ms",
   "sablefix.panel.watch_threshold": "抓栈阈值",
