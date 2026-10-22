@@ -33,34 +33,61 @@ public final class TicketScan {
             if (!Files.exists(p)) {
                 dev.sfx.sablefix.log.ModLog.infoT("sablefix.scan.tickets_absent");
                 SableFixMod.LOGGER.info("票据体检：文件不存在（视为 0 条，正常）");
-                // 十轮审计#48：文件不存在时也要**清登记**——原实现直接 return，两类残留无人清：
-                //  1) 上轮文件损坏 → 登记 "<corrupted ticket file>" → 管理员删掉坏文件 → 本条永久残留；
-                //  2) 上轮 150 条 → 登记 "<文件名>" → 文件被删 → 本条永久残留。
-                // 两者都会导致每 5 分钟误报 WARN + 玩家进服永久提示。
-                // 「文件不存在」= 0 条 = 健康，与解析成功但计数回落是同一情形（L49-51 的 else 分支）。
-                DamageRegistry.clear(DamageRegistry.Kind.TICKETS_STUCK, CORRUPTED_TICKET_FILE);
-                DamageRegistry.clear(DamageRegistry.Kind.TICKETS_STUCK, p.getFileName().toString());
+                // 十轮审计#48：文件不存在时也要**清登记**（两类残留：上轮损坏登记的
+                // "<corrupted ticket file>"、上轮 N 条登记的 "<文件名>"）——否则永久残留，
+                // 每 5 分钟误报 WARN + 玩家进服永久提示。
+                // 十轮审计#66：清登记逻辑并入 syncRegistry()（同款逻辑只留一份），
+                // 启动体检与 /sablefix check 共用 → 两处数据同源。
+                syncRegistry(p);
                 return;
             }
-            TicketInfo info = read(p);
-            // 十轮审计#10：闭环清登记——上次扫描失败（文件损坏）登记了
-            // "<corrupted ticket file>"，本次解析成功即说明文件已恢复（管理员手动替换 /
-            // 工具修复）。原实现无清除方 → 该登记永久残留，每 5 分钟误报 WARN + 玩家永久提示。
-            // 与 STALE_READONLY 的"健康时清登记"同一范式。
-            DamageRegistry.clear(DamageRegistry.Kind.TICKETS_STUCK, CORRUPTED_TICKET_FILE);
+            // 十轮审计#66：读 + 登记簿同步并到 syncRegistry()（#10 损坏登记清除、
+            // #48 条数回落清除、堆积登记都只留一份实现）。
+            TicketInfo info = syncRegistry(p);
+            if (info == null) return;   // 文件在读之前消失（极罕见）：syncRegistry 已清登记
             dev.sfx.sablefix.log.ModLog.infoT("sablefix.scan.tickets_ok", info.count(), info.fileSize());
             SableFixMod.LOGGER.info("票据体检：{} 条票据，文件 {} 字节，gzip/NBT 可正常解析", info.count(), info.fileSize());
-            if (info.count() >= 100) {
-                DamageRegistry.register(DamageRegistry.Kind.TICKETS_STUCK, p.getFileName().toString(), info.count());
-            } else {
-                // 条数回落到阈值以下（已清理）→ 清掉具体文件名的登记
-                DamageRegistry.clear(DamageRegistry.Kind.TICKETS_STUCK, p.getFileName().toString());
-            }
         } catch (Exception e) {
             dev.sfx.sablefix.log.ModLog.errorT("sablefix.scan.tickets_fail", e.getMessage());
             SableFixMod.LOGGER.error("票据体检失败：票据文件可能损坏，用 /sablefix tickets 查看", e);
             DamageRegistry.register(DamageRegistry.Kind.TICKETS_STUCK, CORRUPTED_TICKET_FILE, 1);
         }
+    }
+
+    /**
+     * 票据计数阈值：达到该条数即视为「堆积」（登记 TICKETS_STUCK）。
+     * 唯一定义，启动体检与 /sablefix check 共用（#66）。
+     */
+    public static final int STUCK_THRESHOLD = 100;
+
+    /**
+     * 读票据并**同步损伤登记簿**（十轮审计#66），供启动体检与 `/sablefix check` 共用。
+     *
+     * <p>与 {@link SubLevelScan#scanAndSyncRegistry} **完全同构**（#65）：登记簿必须是
+     * 「最近一次实读」的状态，否则 `check` 的两段数据**时点不同**：
+     * ①「已登记损伤」= 启动时的旧登记；②「票据 N 条」= 本次实时读。
+     * 用户手动清理票据（或条数自然回落到阈值以下）后 → 第一段仍报「票据堆积 ×150」，
+     * 第二段报「50 条」→ **自相矛盾**。
+     *
+     * @return 票据信息；文件不存在时返回 null（0 条 = 健康）。
+     */
+    public static TicketInfo syncRegistry(Path p) throws IOException {
+        if (!Files.exists(p)) {
+            // 文件不存在 = 0 条 = 健康：两类残留都要清（#48 同款）
+            DamageRegistry.clear(DamageRegistry.Kind.TICKETS_STUCK, CORRUPTED_TICKET_FILE);
+            DamageRegistry.clear(DamageRegistry.Kind.TICKETS_STUCK, p.getFileName().toString());
+            return null;
+        }
+        TicketInfo info = read(p);
+        // 解析成功 → 「上次损坏」登记可清（#10）
+        DamageRegistry.clear(DamageRegistry.Kind.TICKETS_STUCK, CORRUPTED_TICKET_FILE);
+        if (info.count() >= STUCK_THRESHOLD) {
+            DamageRegistry.register(DamageRegistry.Kind.TICKETS_STUCK, p.getFileName().toString(), info.count());
+        } else {
+            // 条数回落到阈值以下（已清理）→ 清掉具体文件名的登记
+            DamageRegistry.clear(DamageRegistry.Kind.TICKETS_STUCK, p.getFileName().toString());
+        }
+        return info;
     }
 
     /** 票据文件损坏时的登记名（唯一权威定义，十轮审计#10）。 */

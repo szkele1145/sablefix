@@ -88,6 +88,7 @@
   "sablefix.cmd.check_hint_stalled": "§e→ 保存曾卡住：本次为历史记录，若已恢复可忽略",
   "sablefix.cmd.check_list_hint": "用 /sablefix list 看具体文件",
   "sablefix.cmd.check_tickets_absent": "票据: 文件不存在（视为 0 条，正常）",
+  "sablefix.cmd.check_tickets_broken": "票据: 文件无法读取（已损坏）——用 /sablefix tickets 查看",
   "sablefix.cmd.check_tickets_ok": "票据: %s 条, 解析正常",
   "sablefix.cmd.check_fail": "体检出错: %s",
   "sablefix.cmd.list_empty": "没有发现问题文件",

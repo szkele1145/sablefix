@@ -88,6 +88,7 @@
   "sablefix.cmd.check_hint_stalled": "§e-> Saves stalled before: historical entry, ignore if recovered",
   "sablefix.cmd.check_list_hint": "Use /sablefix list for details",
   "sablefix.cmd.check_tickets_absent": "Tickets: file absent (treated as 0, normal)",
+  "sablefix.cmd.check_tickets_broken": "Tickets: file unreadable (damaged) — use /sablefix tickets to look at it",
   "sablefix.cmd.check_tickets_ok": "Tickets: %s, parse OK",
   "sablefix.cmd.check_fail": "Check failed: %s",
   "sablefix.cmd.list_empty": "No problem files found",

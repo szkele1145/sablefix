@@ -415,6 +415,21 @@ public final class SfxCommands {
                 // 现在两段同源（都是本次实扫的结果）。
                 Path dir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
                 SubLevelScan.Report r = SubLevelScan.scanAndSyncRegistry(dir);
+                // 十轮审计#66：票据也要在**取快照之前**同步登记簿（与子层级同源）。
+                // 票据文件损坏不该让整个 check 失败——只登记损坏并继续（与启动体检同款）。
+                Path tf = TicketScan.ticketFile(server);
+                TicketScan.TicketInfo t = null;
+                boolean ticketsBroken = false;
+                try {
+                    t = TicketScan.syncRegistry(tf);
+                } catch (Exception e) {
+                    ticketsBroken = true;
+                    dev.sfx.sablefix.scan.DamageRegistry.register(
+                            dev.sfx.sablefix.scan.DamageRegistry.Kind.TICKETS_STUCK,
+                            TicketScan.CORRUPTED_TICKET_FILE, 1);
+                }
+                final TicketScan.TicketInfo ft = t;
+                final boolean ftBroken = ticketsBroken;
                 // 扫描完再取登记簿快照：含本次扫描新登记的损伤
                 java.util.List<dev.sfx.sablefix.scan.DamageRegistry.Entry> dmg =
                         dev.sfx.sablefix.scan.DamageRegistry.snapshot();
@@ -458,14 +473,15 @@ public final class SfxCommands {
                     if (!r.slvlr().isEmpty() || !r.slvls().isEmpty()) {
                         src.sendSuccess(() -> tr("sablefix.cmd.check_list_hint"), false);
                     }
+                    // 十轮审计#66：票据段用**本次实读**的结果（与登记簿同源）。
+                    if (ftBroken) {
+                        src.sendSuccess(() -> tr("sablefix.cmd.check_tickets_broken"), false);
+                    } else if (ft == null) {
+                        src.sendSuccess(() -> tr("sablefix.cmd.check_tickets_absent"), false);
+                    } else {
+                        src.sendSuccess(() -> tr("sablefix.cmd.check_tickets_ok", ft.count()), false);
+                    }
                 });
-                Path tf = TicketScan.ticketFile(server);
-                if (!java.nio.file.Files.exists(tf)) {
-                    server.execute(() -> src.sendSuccess(() -> tr("sablefix.cmd.check_tickets_absent"), false));
-                } else {
-                    TicketScan.TicketInfo t = TicketScan.read(tf);
-                    server.execute(() -> src.sendSuccess(() -> tr("sablefix.cmd.check_tickets_ok", t.count()), false));
-                }
             } catch (Exception e) {
                 server.execute(() -> src.sendFailure(tr("sablefix.cmd.check_fail", e.getMessage())));
                 SableFixMod.LOGGER.error("check 失败", e);
