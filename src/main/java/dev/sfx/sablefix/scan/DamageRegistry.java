@@ -207,6 +207,23 @@ public final class DamageRegistry {
                         new TypeToken<Map<String, Entry>>() {}.getType());
                 if (loaded != null) {
                     DAMAGE.putAll(loaded);
+                    // 十轮审计#71：**kind 为 null 的条目必须剔除**。Gson 对缺失的 String 字段
+                    // 填 null（旧版本写的 JSON、手改的 JSON、字段被改名的版本都可能缺）→
+                    // 这样的条目会让按 kind 汇总的地方拿到 null key：kindLabel(null) 的
+                    // switch(null) 抛 NPE，而 periodicWarn 跑在**服务器 tick** 里
+                    // → 每 5 分钟炸一次 tick。治本：加载时就丢掉这类坏条目。
+                    int badKind = 0;
+                    for (java.util.Iterator<Map.Entry<String, Entry>> it = DAMAGE.entrySet().iterator(); it.hasNext(); ) {
+                        Entry v = it.next().getValue();
+                        if (v == null || v.kind == null || v.kind.isEmpty()
+                                || v.file == null || v.file.isEmpty()) {
+                            it.remove();
+                            badKind++;
+                        }
+                    }
+                    if (badKind > 0) {
+                        SableFixMod.LOGGER.warn("损伤登记簿清理：{} 条 kind/file 字段缺失的坏条目（无法归类）", badKind);
+                    }
                     // 十轮审计#9：清理旧格式的 SAVE_STALLED 登记——旧版把「已 pending 毫秒数」
                     // 拼进登记名，导致恢复时 clear 永远失配 → 登记永久残留。
                     // 十轮审计#46：清理范围扩大到**所有** SAVE_STALLED，不只是带旧后缀的。
@@ -226,6 +243,10 @@ public final class DamageRegistry {
                     }
                     if (stale > 0) {
                         SableFixMod.LOGGER.info("损伤登记簿清理：{} 条保存卡顿登记（保存卡顿为瞬时状态，不跨重启保留）", stale);
+                    }
+                    // 十轮审计#71：坏条目（kind/file 缺失）也要**落盘清理**，
+                    // 否则磁盘上仍是清理前的快照 → 每次启动都要再清一遍。
+                    if (stale > 0 || badKind > 0) {
                         // 十轮审计#46：清理只改了内存——磁盘上仍是清理前的快照。若此后
                         // 服务器再无 register/clear（很常见：开服即无损伤），flush() 只排空
                         // 队列、不重写快照 → 陈旧条目一直留在文件里，每次启动都要再清一遍。
@@ -270,8 +291,12 @@ public final class DamageRegistry {
                 DAMAGE.size(), sb, recoveryHint(byKind));
     }
 
-    /** 控制台/聊天可读的损伤类型名（避免把内部 kind 枚举名直接糊给用户）。1.6.2 起命令侧共用。 */
+    /** 控制台/聊天可读的损伤类型名（避免把内部 kind 枚举名直接糊给用户）。1.6.2 起命令侧共用。
+     *  十轮审计#71：kind 为 null 时 switch(null) 抛 NPE —— 而本方法跑在**服务器 tick** 里
+     *  （periodicWarn 每 5 分钟一次）。旧版本/手改的 JSON 里 kind 字段缺失时 Gson 反序列化
+     *  得到 null → 每 5 分钟炸一次 tick。null/未知一律返回原始值或兜底文案。 */
     public static String kindLabel(String kind) {
+        if (kind == null) return "未知损伤";
         return switch (kind) {
             case "SUBLVL_DEAD" -> "子层级死指针";
             case "TICKETS_STUCK" -> "票据堆积";
