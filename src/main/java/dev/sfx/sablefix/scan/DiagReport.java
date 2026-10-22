@@ -201,7 +201,40 @@ public final class DiagReport {
             throw e;
         }
         ModLog.info("诊断报告已生成：" + out.getFileName());
+        // 十轮审计#72：报告文件**永不清理** → 每次出报告都多一份几十 KB 的文件，
+        // 长期运行 + 定期出报告 → logs/sablefix/ 无限堆积（磁盘）。按与 threaddump
+        // 同款机制保留最近 MAX_REPORTS_KEPT 份，更旧的删除。
+        pruneOldReports(dir);
         return out;
+    }
+
+    /** 报告保留配额（十轮审计#72）：比 threaddump 少——报告比栈大（200 条日志 + 头部），
+     *  而 threaddump 是**卡死现场**（越多越好排查），报告是**快照**（旧的用处小）。 */
+    private static final int MAX_REPORTS_KEPT = 20;
+
+    /** 清理旧的诊断报告：保留最近 MAX_REPORTS_KEPT 份（按修改时间新→旧）。
+     *  与 ThreadWatchdog.pruneOldDumps 同款策略：**读不到修改时间的文件跳过**
+     *  （既不参与排序、也不参与删除计数）——「读不到 mtime」通常是**瞬时**状态
+     *  （文件正被写/被占用），不代表它旧。 */
+    private static void pruneOldReports(Path dir) {
+        try (var stream = Files.list(dir)) {
+            var files = stream.filter(p -> {
+                        String n = p.getFileName().toString();
+                        return n.startsWith("report-") && n.endsWith(".txt");
+                    }).filter(p -> {
+                        try { Files.getLastModifiedTime((Path) p); return true; }
+                        catch (IOException e) { return false; }
+                    }).sorted(java.util.Comparator.comparingLong(p -> {
+                        try { return Files.getLastModifiedTime((Path) p).toMillis(); }
+                        catch (IOException e) { return 0L; }
+                    }).reversed())
+                    .toList();
+            for (int i = MAX_REPORTS_KEPT; i < files.size(); i++) {
+                try { Files.delete(files.get(i)); } catch (IOException ignored) {}
+            }
+        } catch (Exception e) {
+            dev.sfx.sablefix.SableFixMod.LOGGER.debug("旧报告清理失败（不影响本次报告）", e);
+        }
     }
 
     /** 报告目录：<user.dir>/logs/sablefix。user.dir 不可用时降级为相对路径。
