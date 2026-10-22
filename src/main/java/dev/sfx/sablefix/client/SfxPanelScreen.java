@@ -229,7 +229,7 @@ public class SfxPanelScreen extends Screen {
                 new NetHandler.PanelData.LogRow("WARN", "16:34:23.602", "sablefix.scan.slvlr_dead", java.util.List.of("r.-4.7.slvlr", "3", "74"), ""),
                 new NetHandler.PanelData.LogRow("INFO", "16:34:23.711", "sablefix.scan.tickets_ok", java.util.List.of("19", "707"), ""),
                 new NetHandler.PanelData.LogRow("INFO", "16:51:08.332", null, java.util.List.of(), "panel request: Dev@[/127.0.0.1]"));
-        return new NetHandler.PanelData(files, 19, uuids, 41, 0, 22_320_000L, dims, logs, false, -1, java.util.List.of());
+        return new NetHandler.PanelData(files, 19, uuids, 41, 0, 22_320_000L, dims, logs, false, -1, java.util.List.of(), 0);
     }
 
     static NetHandler.DiagRes demoDiag() {
@@ -829,8 +829,13 @@ public class SfxPanelScreen extends Screen {
                 byy += 13;
                 shown2++;
             }
-            if (backups.size() > 8 && byy + 12 <= limit) {
-                dtr(g, L("sablefix.panel.backups_more", backups.size() - 8), x + 28, byy, w - 60, withA(FAINT, a), false);
+            // 十轮审计#73：用**真实总数**算「还有多少份更早的备份」。
+            // 原来用 backups.size()（下发时截断到 8 条前的列表长度）→ 显示的是
+            // 截断后的数字（真实 200 份时只说「还有 56 份」）→ 用户以为备份不多，
+            // 磁盘被吃掉几 GB 却不知情。backupTotal 由服务端给出真实总数。
+            int total = Math.max(data.backupTotal(), backups.size());
+            if (total > shown2 && byy + 12 <= limit) {
+                dtr(g, L("sablefix.panel.backups_more", total - shown2), x + 28, byy, w - 60, withA(FAINT, a), false);
             }
         }
     }

@@ -26,8 +26,11 @@ public final class NetHandler {
      *  v7: 浏览页汇总行不再服务端预渲染（name 置空 + live 传健康数，客户端本地化渲染
      *      browse_healthy；服务端预渲染对中文客户端是英文）——字段格式未变但**语义变更**
      *  v8: 日志行的 msg 统一为**时间戳**，正文另走 body 字段（原纯文本行把时间戳与正文
-     *      塞在 msg 里，客户端靠找 ']' 猜切分点 → 正文含 ']' 时错位）——载荷格式变更 */
-    public static final String PROTOCOL_VERSION = "8";
+     *      塞在 msg 里，客户端靠找 ']' 猜切分点 → 正文含 ']' 时错位）——载荷格式变更
+     *  v9: 面板数据新增 backupTotal（备份**总数**）字段，备份清单只下发前 8 条
+     *      （原来发 64 条而客户端只用 8 条；且客户端「还有 N 条」用的是截断值 64-8=56，
+     *      真实 200 份时用户以为只有 64 份 → 磁盘占用被严重低估）——载荷格式变更 */
+    public static final String PROTOCOL_VERSION = "9";
 
     public static void register(net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent event) {
         PayloadRegistrar reg = event.registrar(PROTOCOL_VERSION);
@@ -67,7 +70,10 @@ public final class NetHandler {
     /** S2C：面板数据。文件行 + 票据 + 看门狗状态 + 维度统计 + 运行日志。scanning=true 表示后台扫描未完成，客户端稍后重试。
      *  lastStallAgoMs：距最近一次卡死抓栈的毫秒数（服务端算好——三轮审计#4/#5：客户端时钟对服务器
      *  epoch 的偏移在 NTP 失步的面板服上显示错乱；改下发相对时长）。-1=未发生过。
-     *  backups：backups/sablefix 下的备份清单（备份管理页用；最多 64 条，超出只保留最新——防帧超限）。
+     *  backups：backups/sablefix 下的备份清单（备份管理页用；只下发前 8 条——客户端本来就只画 8 条）。
+     *  backupTotal：backups 目录里的**备份总数**（十轮审计#73）。backups 列表被截断后，
+     *  客户端拿不到真实总数 → 「还有 N 条」用的是**截断值**（64-8=56），
+     *  实际有 200 份时用户以为只有 64 份 → 磁盘占用被严重低估。总数单独下发。
      *  BackupRow.ageMs 同理由服务端算好。 */
     public record PanelData(
             List<FileRow> files,
@@ -76,7 +82,7 @@ public final class NetHandler {
             List<DimRow> dims,
             List<LogRow> logLines, boolean scanning,
             long lastStallAgoMs,
-            List<BackupRow> backups) implements CustomPacketPayload {
+            List<BackupRow> backups, int backupTotal) implements CustomPacketPayload {
 
         public record FileRow(String name, boolean slvlr, long size, int live, int dead) {}
         public record DimRow(String name, int entities, int blockEntities, int chunks) {}
@@ -167,6 +173,9 @@ public final class NetHandler {
     private static final int MAX_UUIDS = 8192;
     private static final int MAX_DIMS = 256;
     private static final int MAX_LOGS = 400;
+    /** 备份清单下发的条数上限（十轮审计#73）：客户端备份页只画 8 条 → 发 8 条足够，
+     *  真实总数另由 backupTotal 字段给出（原实现发 64 条而只用 8 条，浪费帧）。 */
+    private static final int MAX_BACKUPS_SENT = 8;
 
     private static void writePanel(FriendlyByteBuf f, PanelData p) {
         // 发送侧硬截断（防帧超限：超大存档 files×name 最坏 300KB+、logs 200KB → 总量逼近 1MB 断线阈值。
@@ -206,13 +215,16 @@ public final class NetHandler {
         for (PanelData.LogRow r : logs) writeLogRow(f, r);
         f.writeBoolean(p.scanning());
         f.writeVarLong(p.lastStallAgoMs);
-        // 备份清单：最多 64 条（buildScan 侧已截断），防帧超限
-        List<PanelData.BackupRow> backups = p.backups.size() > 64
-                ? p.backups.subList(0, 64) : p.backups;
+        // 备份清单：只下发**前 8 条**（客户端备份页只画 8 条——十轮审计#73）。
+        // 原来这里发 64 条而客户端只画 8 条，纯粹浪费帧；且客户端拿不到真实总数。
+        // backupTotal 单独下发真实总数（客户端「还有 N 条」用）。
+        List<PanelData.BackupRow> backups = p.backups.size() > MAX_BACKUPS_SENT
+                ? p.backups.subList(0, MAX_BACKUPS_SENT) : p.backups;
         f.writeVarInt(backups.size());
         for (PanelData.BackupRow b : backups) {
             f.writeUtf(utf8Trunc(b.name(), 192), 192); f.writeVarLong(b.size()); f.writeVarLong(b.ageMs());
         }
+        f.writeVarInt(Math.max(0, p.backupTotal()));
     }
 
     private static PanelData readPanel(FriendlyByteBuf f) {
@@ -240,12 +252,13 @@ public final class NetHandler {
         for (int i = 0; i < ln; i++) logs.add(readLogRow(f));
         boolean scanning = f.readBoolean();
         long stallAgo = f.readVarLong();
-        int bn = clampCount(f.readVarInt(), 64);
+        int bn = clampCount(f.readVarInt(), MAX_BACKUPS_SENT);
         List<PanelData.BackupRow> backups = new ArrayList<>(bn);
         for (int i = 0; i < bn; i++) {
             backups.add(new PanelData.BackupRow(f.readUtf(192), f.readVarLong(), f.readVarLong()));
         }
-        return new PanelData(files, tc, uuids, gap, dumps, up, dims, logs, scanning, stallAgo, backups);
+        int backupTotal = clampCount(f.readVarInt(), 1_000_000);
+        return new PanelData(files, tc, uuids, gap, dumps, up, dims, logs, scanning, stallAgo, backups, backupTotal);
     }
 
     /** VarInt 长度防御：负值按 0 处理（恶意/损坏包不踢客户端） */

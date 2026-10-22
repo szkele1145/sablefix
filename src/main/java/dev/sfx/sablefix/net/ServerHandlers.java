@@ -344,7 +344,10 @@ public final class ServerHandlers {
                     ThreadWatchdog.lastTickGapMs(), ThreadWatchdog.dumpCount(), uptime, dims,
                     logLines, cached == COLD_SCAN || cached == SCAN_FAILED,
                     stallAgo,
-                    cached.backups());
+                    cached.backups(),
+                    // 十轮审计#73：备份**总数**单独下发（列表在下发侧截断到 8 条）。
+                    // 占位缓存（COLD/FAILED）的 backups 为空 → 总数 0。
+                    cached.backups().size());
             ctx.reply(data);
         } catch (Exception e) {
             SableFixMod.LOGGER.error("面板数据生成失败", e);
@@ -399,7 +402,12 @@ public final class ServerHandlers {
                 }
             }
             out.sort((a, b) -> Long.compare(a.ageMs(), b.ageMs()));   // 新→旧（age 小=新）
-            return out.size() > 64 ? out.subList(0, 64) : out;
+            // 十轮审计#73：不再在此截断到 64——截断值会让「共 N 个备份」（命令）与
+            // 「还有 N 条」（面板）都拿不到真实总数（真实 200 份时两边都只显示 64）。
+            // 全量返回：命令侧显示真实总数；面板侧的下发截断在 NetHandler 写侧
+            // （MAX_BACKUPS_SENT=8，客户端只画 8 条）+ backupTotal 字段给真实总数。
+            // 目录里几百个文件名的 list 是廉价 IO（微秒级），全量无性能问题。
+            return out;
         } catch (Exception e) {
             return List.of();
         }
