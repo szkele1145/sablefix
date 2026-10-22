@@ -1141,7 +1141,10 @@ public class SfxPanelScreen extends Screen {
         // 状态行里虽有旧坐标（"(x, z)"），但那是括号里的小字，管理员读实体数/方块数时
         // 不会注意到 → 会把**别的坐标**的数据当成当前输入的坐标 → **结论全错**。
         // 此刻给出醒目提示：参数已改，结果不是这个坐标的。
-        if (diagParamsChanged()) {
+        // 十轮审计#70：提示行画在 cy2+94（字体行高 9 → 底部约 cy2+103），卡片高不够时
+        // 会画到**卡片外**（原隐含门槛是「方块实体」行的 85，被本行抬到 103）。
+        // 窗口太矮时宁可不提示（数据本身没变，少一行说明好过画到框外）。
+        if (diagParamsChanged() && cardH >= 104) {
             g.drawString(font, L("sablefix.panel.diag_stale"), x + 22, cy2 + 94, withA(WARN, a), false);
         }
     }
