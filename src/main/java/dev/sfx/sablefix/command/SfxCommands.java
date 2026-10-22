@@ -195,7 +195,15 @@ public final class SfxCommands {
         dev.sfx.sablefix.net.ServerHandlers.runAsync(() -> {
         try {
             Path dir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
-            SubLevelScan.Report r = SubLevelScan.scan(dir);
+            // 十轮审计#67：用 scanAndSyncRegistry（**同步登记簿**）而不是纯 scan。
+            // 原实现：repair-all 只修「本次扫描发现有问题」的文件；已经恢复健康的文件
+            // 不在计划里 → apply 不会被调 → 它的旧登记**永远留在登记簿**里 →
+            // 修完跑 check 仍报「已登记损伤: SUBLVL_DEAD ×N」而实际文件已修好
+            // → 管理员以为还有损坏，反复 repair-all（**空转**）。
+            // 现在：扫描时就把「已恢复健康」的旧登记清掉（闭环 clear），
+            // 剩下没修成功的（失败）登记保留 —— 登记簿 = 修复后的现状 ✅
+            // （只扫一次，不额外增加耗时；随后的 apply 还会再 clear 修好的那些）。
+            SubLevelScan.Report r = SubLevelScan.scanAndSyncRegistry(dir);
             List<SubLevelRepair.RepairPlan> plans = new ArrayList<>();
             for (SubLevelScan.SlvlIssue i : r.slvlr()) {
                 try { plans.add(SubLevelRepair.plan(i.file())); } catch (Exception ignored) {}
