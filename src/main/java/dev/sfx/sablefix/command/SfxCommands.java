@@ -725,6 +725,9 @@ public final class SfxCommands {
     private static int backupDel(CommandSourceStack src, String name) {
         try {
             dev.sfx.sablefix.net.ServerHandlers.deleteBackup(src.getServer(), name);
+            // 十轮审计#69：删了备份 → 面板的备份管理页（数据来自 CachedScan.backups 快照）
+            // 仍会列出**已删除的备份**（TTL 60s 内）→ 作废缓存，下开面板重扫。
+            dev.sfx.sablefix.net.ServerHandlers.resetScanCache();
             src.sendSuccess(() -> tr("sablefix.cmd.backup_del_done", name), false);
             return 1;
         } catch (java.nio.file.NoSuchFileException e) {
@@ -747,6 +750,8 @@ public final class SfxCommands {
     private static int backupPurge(CommandSourceStack src) {
         try {
             int n = dev.sfx.sablefix.net.ServerHandlers.purgeBackups(src.getServer());
+            // 十轮审计#69：同 backupDel —— 删除了备份就要作废面板缓存
+            if (n > 0) dev.sfx.sablefix.net.ServerHandlers.resetScanCache();
             src.sendSuccess(() -> tr("sablefix.cmd.backup_purge_done", n), false);
             return 1;
         } catch (java.nio.file.FileSystemException e) {
