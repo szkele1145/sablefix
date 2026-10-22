@@ -406,10 +406,18 @@ public final class SfxCommands {
                 // 1.6.2：先报"已登记损伤"（持久化登记簿，跨重启保留）再报本次实扫结果。
                 // 实机反馈：fix 后自动重启仍报损坏时，用户无法一眼看出是哪一类损伤——
                 // 登记簿里明明有 SUBLVL_DEAD / STALE_READONLY，check 却只打扫描计数。
+                //
+                // 十轮审计#65：快照必须取在扫描**之后**，且扫描要**同步登记簿**
+                // （scanAndSyncRegistry：本次发现的坏文件 register、本次已恢复的 clear）。
+                // 原实现：先 snapshot()（启动时的旧登记）再 scan()（纯扫描，不动登记簿）
+                // → 两段数据**时点不同** → 用户手动修好文件后（没重启），
+                //   第一段仍报旧损伤、第二段报健康 → **自相矛盾**，管理员不知信哪个。
+                // 现在两段同源（都是本次实扫的结果）。
+                Path dir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
+                SubLevelScan.Report r = SubLevelScan.scanAndSyncRegistry(dir);
+                // 扫描完再取登记簿快照：含本次扫描新登记的损伤
                 java.util.List<dev.sfx.sablefix.scan.DamageRegistry.Entry> dmg =
                         dev.sfx.sablefix.scan.DamageRegistry.snapshot();
-                Path dir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
-                SubLevelScan.Report r = SubLevelScan.scan(dir);
                 long dead = r.slvlr().stream().mapToLong(SubLevelScan.SlvlIssue::deadPointers).sum();
                 long bad = r.slvls().stream().mapToLong(SubLevelScan.SlvlsIssue::badEntries).sum();
                 // 按 kind 汇总（保持登记顺序）：SUBLVL_DEAD×3(2 文件) 这类一行看完

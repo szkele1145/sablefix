@@ -38,23 +38,10 @@ public final class SubLevelScan {
             dev.sfx.sablefix.log.ModLog.infoT("sablefix.scan.sub_start");
             Path sublevels = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT).resolve("sublevels");
             int staleRo = warnStaleReadOnly(sublevels);
-            // 十轮审计#47：扫描**前**记下已登记的 SUBLVL_DEAD 文件名（用于扫后清掉
-            // 「本轮已健康」的旧登记）。原实现只对**有问题**的文件 register，从不 clear
-            // 已恢复的文件 → 用户手动修好（或 Sable 自己写回）后，登记永久残留 →
-            // 每 5 分钟误报 WARN + 玩家进服永久提示（与十轮审计#46 同族：孤立登记无人清）。
-            // 本仓已有同构先例：warnStaleReadOnly 的 else 分支就做了闭环清除。
-            java.util.Set<String> prevDead = new java.util.HashSet<>();
-            for (DamageRegistry.Entry e : DamageRegistry.snapshot()) {
-                if (DamageRegistry.Kind.SUBLVL_DEAD.name().equals(e.kind)
-                        && !SCAN_FAILED_FILE.equals(e.file)) {
-                    prevDead.add(e.file);
-                }
-            }
-            Report r = scan(sublevels);
-            // 十轮审计#10：闭环清登记——上次扫描失败登记了 "<sublevels scan failed>"，
-            // 本次扫描成功即说明问题已消失（权限恢复/文件修复）。原实现无清除方 →
-            // 登记永久残留，每 5 分钟误报 WARN + 玩家永久提示。
-            DamageRegistry.clear(DamageRegistry.Kind.SUBLVL_DEAD, SCAN_FAILED_FILE);
+            // 十轮审计#65：扫描 + 登记簿同步（含「本轮已健康」旧登记的闭环清除，#47；
+            // 以及「上次扫描失败」登记的清除，#10）已抽到 scanAndSyncRegistry()，
+            // 供启动体检与 /sablefix check 共用 → 两处数据同源。
+            Report r = scanAndSyncRegistry(sublevels);
             long dead = r.slvlr().stream().mapToLong(SlvlIssue::deadPointers).sum();
             long bad = r.slvls().stream().mapToLong(SlvlsIssue::badEntries).sum();
             if (dead == 0 && bad == 0) {
@@ -65,35 +52,12 @@ public final class SubLevelScan {
                     // 十轮审计#4：参数必须是 String/Number/Boolean/Component——传 Path 会在
                     // 非 production 环境下被 TranslatableContents 构造器直接拒（IllegalArgumentException）。
                     dev.sfx.sablefix.log.ModLog.warnT("sablefix.scan.slvlr_dead", i.file().getFileName().toString(), i.deadPointers(), i.livePointers());
-                    DamageRegistry.register(DamageRegistry.Kind.SUBLVL_DEAD, i.file().getFileName().toString(), i.deadPointers());
                 }
                 for (SlvlsIssue i : r.slvls()) {
                     dev.sfx.sablefix.log.ModLog.warnT("sablefix.scan.slvls_bad", i.file().getFileName().toString(), i.badEntries());
-                    DamageRegistry.register(DamageRegistry.Kind.SUBLVL_DEAD, i.file().getFileName().toString(), i.badEntries());
                 }
                 dev.sfx.sablefix.log.ModLog.warnT("sablefix.scan.sub_issues", dead, bad);
                 SableFixMod.LOGGER.warn("子层级体检：{} 个文件共 {} 个死指针 / {} 个坏条目，用 /sablefix check 查看", r.slvlr().size() + r.slvls().size(), dead, bad);
-            }
-            // 十轮审计#47：闭环——本轮**未**出现在问题列表里的旧登记（文件已恢复健康）
-            // 必须清掉，否则登记永久残留（每 5 分钟误报 + 玩家永久提示）。
-            int cleared = 0;
-            for (String old : prevDead) {
-                boolean stillBad = false;
-                for (SlvlIssue i : r.slvlr()) {
-                    if (i.file().getFileName().toString().equals(old)) { stillBad = true; break; }
-                }
-                if (!stillBad) {
-                    for (SlvlsIssue i : r.slvls()) {
-                        if (i.file().getFileName().toString().equals(old)) { stillBad = true; break; }
-                    }
-                }
-                if (!stillBad) {
-                    DamageRegistry.clear(DamageRegistry.Kind.SUBLVL_DEAD, old);
-                    cleared++;
-                }
-            }
-            if (cleared > 0) {
-                SableFixMod.LOGGER.info("子层级体检：{} 个已恢复健康的文件从损伤登记簿移除", cleared);
             }
         } catch (Exception e) {
             dev.sfx.sablefix.log.ModLog.errorT("sablefix.scan.sub_fail", e.getMessage());
@@ -104,6 +68,66 @@ public final class SubLevelScan {
 
     /** 扫描失败时的登记名（唯一权威定义，十轮审计#10）。 */
     public static final String SCAN_FAILED_FILE = "<sublevels scan failed>";
+
+    /**
+     * 扫描子层级并**同步损伤登记簿**（十轮审计#65）。
+     *
+     * <p>登记簿的 SUBLVL_DEAD 条目必须与**最近一次实扫**一致：
+     * <ul>
+     *   <li>本次发现有问题的文件 → register（计数=死指针/坏条目数）</li>
+     *   <li>上次登记、本次已恢复健康的文件 → clear（闭环，#47）</li>
+     *   <li>上次「扫描失败」登记 → 本次成功即 clear（#10）</li>
+     * </ul>
+     *
+     * <p>为什么抽出来给 {@code /sablefix check} 共用：原实现里这套同步只发生在
+     * **启动体检**。于是 {@code /sablefix check} 打印的两段数据**时点不同**——
+     * 第一段「已登记损伤」是启动时的旧登记，第二段「子层级体检」是本次实时扫描。
+     * 用户手动修好文件后（没重启）→ 第一段仍报旧损伤、第二段报健康 → **自相矛盾**，
+     * 管理员不知该信哪个。现在 check 走同一条路径 → 两段**同源**。
+     */
+    public static Report scanAndSyncRegistry(Path sublevelsDir) throws IOException {
+        // 扫描**前**记下已登记的 SUBLVL_DEAD 文件名（用于扫后清掉「本轮已健康」的旧登记）
+        java.util.Set<String> prevDead = new java.util.HashSet<>();
+        for (DamageRegistry.Entry e : DamageRegistry.snapshot()) {
+            if (DamageRegistry.Kind.SUBLVL_DEAD.name().equals(e.kind)
+                    && !SCAN_FAILED_FILE.equals(e.file)) {
+                prevDead.add(e.file);
+            }
+        }
+        Report r = scan(sublevelsDir);
+        // 十轮审计#10：闭环清登记——上次扫描失败登记了 "<sublevels scan failed>"，
+        // 本次扫描成功即说明问题已消失（权限恢复/文件修复）。
+        DamageRegistry.clear(DamageRegistry.Kind.SUBLVL_DEAD, SCAN_FAILED_FILE);
+        // 登记本次发现的问题
+        for (SlvlIssue i : r.slvlr()) {
+            DamageRegistry.register(DamageRegistry.Kind.SUBLVL_DEAD, i.file().getFileName().toString(), i.deadPointers());
+        }
+        for (SlvlsIssue i : r.slvls()) {
+            DamageRegistry.register(DamageRegistry.Kind.SUBLVL_DEAD, i.file().getFileName().toString(), i.badEntries());
+        }
+        // 十轮审计#47：闭环——本轮**未**出现在问题列表里的旧登记（文件已恢复健康）
+        // 必须清掉，否则登记永久残留（每 5 分钟误报 + 玩家永久提示）。
+        int cleared = 0;
+        for (String old : prevDead) {
+            boolean stillBad = false;
+            for (SlvlIssue i : r.slvlr()) {
+                if (i.file().getFileName().toString().equals(old)) { stillBad = true; break; }
+            }
+            if (!stillBad) {
+                for (SlvlsIssue i : r.slvls()) {
+                    if (i.file().getFileName().toString().equals(old)) { stillBad = true; break; }
+                }
+            }
+            if (!stillBad) {
+                DamageRegistry.clear(DamageRegistry.Kind.SUBLVL_DEAD, old);
+                cleared++;
+            }
+        }
+        if (cleared > 0) {
+            SableFixMod.LOGGER.info("子层级体检：{} 个已恢复健康的文件从损伤登记簿移除", cleared);
+        }
+        return r;
+    }
 
     /** 残留只读检测（对抗审计#8）：fix 被 external kill 打断时 unmaskAll 没跑——文件残留只读会让
      *  Sable 写回静默失败、进度全丢。启动时发现即 ERROR fail-loud + 登记损伤。
