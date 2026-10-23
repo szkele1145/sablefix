@@ -87,7 +87,8 @@ public final class ThreadWatchdog {
         thread.setDaemon(true);
         thread.start();
         ModLogHolder.started();
-        SableFixMod.LOGGER.info("主线程监视器已启动（卡死 {}s 抓栈）", ALERT_NANOS / 1_000_000_000L);
+        // 十轮审计#76：ModLog 自己在控制台输出（"[log] " 前缀），这里再 LOGGER 一遍
+        // = 同一事件两行（英文 + 中文），控制台噪音翻倍。统一以 ModLog 为唯一出口。
     }
 
     public static synchronized void stop() {

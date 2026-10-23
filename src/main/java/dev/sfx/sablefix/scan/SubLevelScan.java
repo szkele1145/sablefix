@@ -46,7 +46,8 @@ public final class SubLevelScan {
             long bad = r.slvls().stream().mapToLong(SlvlsIssue::badEntries).sum();
             if (dead == 0 && bad == 0) {
                 dev.sfx.sablefix.log.ModLog.infoT("sablefix.scan.sub_ok", r.scannedSlvlr(), r.scannedSlvls());
-                SableFixMod.LOGGER.info("子层级体检：扫描 {} 个 .slvlr + {} 个 .slvls，全部健康", r.scannedSlvlr(), r.scannedSlvls());
+                // 十轮审计#76：见 ThreadWatchdog.start() 同款注释——ModLog 已输出控制台，
+                // 这里不再重复打一行中文。
             } else {
                 for (SlvlIssue i : r.slvlr()) {
                     // 十轮审计#4：参数必须是 String/Number/Boolean/Component——传 Path 会在
@@ -57,7 +58,7 @@ public final class SubLevelScan {
                     dev.sfx.sablefix.log.ModLog.warnT("sablefix.scan.slvls_bad", i.file().getFileName().toString(), i.badEntries());
                 }
                 dev.sfx.sablefix.log.ModLog.warnT("sablefix.scan.sub_issues", dead, bad);
-                SableFixMod.LOGGER.warn("子层级体检：{} 个文件共 {} 个死指针 / {} 个坏条目，用 /sablefix check 查看", r.slvlr().size() + r.slvls().size(), dead, bad);
+                // 十轮审计#76：ModLog 已输出控制台，此处不再重复。
             }
         } catch (Exception e) {
             dev.sfx.sablefix.log.ModLog.errorT("sablefix.scan.sub_fail", e.getMessage());
@@ -146,7 +147,7 @@ public final class SubLevelScan {
             String msg = "检测到 " + n + " 个子层级文件残留只读（上次 /sablefix fix 被中断）——"
                     + "Sable 将无法保存子层级进度！用 /sablefix unmask 解除";
             dev.sfx.sablefix.log.ModLog.error(msg);
-            SableFixMod.LOGGER.error("{}", msg);
+            // 十轮审计#76：msg 已由 ModLog 打到控制台，不再重复 LOGGER（无堆栈，纯重复）。
             // 二轮审计#3：独立 kind——进服提示说"用 unmask 解除"而非误导性的"用 repair 修复"
             DamageRegistry.register(DamageRegistry.Kind.STALE_READONLY, DamageRegistry.STALE_READONLY_FILE, n);
         } else {

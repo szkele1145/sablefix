@@ -32,7 +32,7 @@ public final class TicketScan {
             Path p = ticketFile(server);
             if (!Files.exists(p)) {
                 dev.sfx.sablefix.log.ModLog.infoT("sablefix.scan.tickets_absent");
-                SableFixMod.LOGGER.info("票据体检：文件不存在（视为 0 条，正常）");
+                // 十轮审计#76：ModLog 已在控制台输出（"[log] " 前缀），不再重复打一行中文。
                 // 十轮审计#48：文件不存在时也要**清登记**（两类残留：上轮损坏登记的
                 // "<corrupted ticket file>"、上轮 N 条登记的 "<文件名>"）——否则永久残留，
                 // 每 5 分钟误报 WARN + 玩家进服永久提示。
@@ -46,7 +46,7 @@ public final class TicketScan {
             TicketInfo info = syncRegistry(p);
             if (info == null) return;   // 文件在读之前消失（极罕见）：syncRegistry 已清登记
             dev.sfx.sablefix.log.ModLog.infoT("sablefix.scan.tickets_ok", info.count(), info.fileSize());
-            SableFixMod.LOGGER.info("票据体检：{} 条票据，文件 {} 字节，gzip/NBT 可正常解析", info.count(), info.fileSize());
+            // 十轮审计#76：同上，不重复。
         } catch (Exception e) {
             dev.sfx.sablefix.log.ModLog.errorT("sablefix.scan.tickets_fail", e.getMessage());
             SableFixMod.LOGGER.error("票据体检失败：票据文件可能损坏，用 /sablefix tickets 查看", e);
