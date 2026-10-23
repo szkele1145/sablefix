@@ -386,7 +386,7 @@ public final class ServerHandlers {
     public static List<NetHandler.PanelData.BackupRow> listBackups(MinecraftServer server) {
         try {
             Path world = worldDir(server);
-            Path backupDir = world.resolve("backups").resolve("sablefix");
+            Path backupDir = world.resolve("backups").resolve("sablefix").normalize();
             if (!Files.isDirectory(backupDir)) return List.of();
             long now = System.currentTimeMillis();
             List<NetHandler.PanelData.BackupRow> out = new ArrayList<>();
