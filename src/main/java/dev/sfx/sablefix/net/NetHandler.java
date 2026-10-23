@@ -54,8 +54,12 @@ public final class NetHandler {
                 ctx.enqueueWork(() -> ServerHandlers.onPurgeReq(p, ctx)));
         reg.playToClient(PurgeRes.TYPE, PurgeRes.CODEC, (p, ctx) ->
                 ctx.enqueueWork(() -> ClientBridge.onPurgeRes(p)));
-        // 十轮审计#77：改用 ModLog——原来只用 LOGGER，面板/报告看不到通道注册。
-        dev.sfx.sablefix.log.ModLog.infoT("sablefix.net.channel_ok");
+        // 十轮审计#78：这里**必须用纯文本**，不能用 ModLog.infoT(key)。
+        // 原因（runServer 实测）：本方法在 mod 加载早期（modloading-sync-worker）执行，
+        // 此时语言资源尚未加载 → Component.translatable(key).getString() 退化返回
+        // key 本身，控制台出现 "[log] sablefix.net.channel_ok" 这种原始 key。
+        // 启动完成后的日志（看门狗/保存观察者/扫描）语言已就绪，仍走 infoT。
+        dev.sfx.sablefix.log.ModLog.info("Network channel registered");
     }
 
     private NetHandler() {}
