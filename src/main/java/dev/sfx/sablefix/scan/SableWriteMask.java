@@ -232,7 +232,10 @@ public final class SableWriteMask {
                 SableFixMod.LOGGER.warn("unmask: {} 不支持只读属性（跳过，继续其余文件）", p.getFileName());
             }
         }
-        SableFixMod.LOGGER.warn("unmask: {} 个文件已恢复可写", n);
+        // 十轮审计#77：原来无条件 LOGGER.warn（恢复可写是好事，不该 WARN），且 n=0 时
+        // 每次启动都刷一行「0 个文件已恢复可写」——纯噪音。改为：只有真解锁了才记，
+        // 级别 INFO，并走 ModLog（面板/报告也能看到）。
+        if (n > 0) dev.sfx.sablefix.log.ModLog.infoT("sablefix.scan.unmask_ok", n);
         MASKED.clear();
         return n;
     }

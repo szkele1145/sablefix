@@ -54,7 +54,8 @@ public final class NetHandler {
                 ctx.enqueueWork(() -> ServerHandlers.onPurgeReq(p, ctx)));
         reg.playToClient(PurgeRes.TYPE, PurgeRes.CODEC, (p, ctx) ->
                 ctx.enqueueWork(() -> ClientBridge.onPurgeRes(p)));
-        SableFixMod.LOGGER.info("网络通道已注册");
+        // 十轮审计#77：改用 ModLog——原来只用 LOGGER，面板/报告看不到通道注册。
+        dev.sfx.sablefix.log.ModLog.infoT("sablefix.net.channel_ok");
     }
 
     private NetHandler() {}

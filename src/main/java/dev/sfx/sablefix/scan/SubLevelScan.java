@@ -125,7 +125,8 @@ public final class SubLevelScan {
             }
         }
         if (cleared > 0) {
-            SableFixMod.LOGGER.info("子层级体检：{} 个已恢复健康的文件从损伤登记簿移除", cleared);
+            // 十轮审计#77：改成 ModLog——原来只用 LOGGER，这条只进控制台、面板/报告看不到。
+            dev.sfx.sablefix.log.ModLog.infoT("sablefix.scan.registry_cleared", cleared);
         }
         return r;
     }

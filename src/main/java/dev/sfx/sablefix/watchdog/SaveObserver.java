@@ -80,7 +80,8 @@ public final class SaveObserver {
         }, "SableFix-SaveObserver");
         thread.setDaemon(true);
         thread.start();
-        SableFixMod.LOGGER.info("保存观察者启动（每 30s 轮询保存 future，跨过一轮仍卡住才登记）");
+        // 十轮审计#77：改用 ModLog——原来只用 LOGGER，面板/报告看不到这条启动记录。
+        dev.sfx.sablefix.log.ModLog.infoT("sablefix.watch.save_observer_up");
     }
 
     public static synchronized void stop() {

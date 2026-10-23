@@ -209,5 +209,11 @@
   "sablefix.panel.list_truncated": "showing %s of %s",
   "sablefix.panel.log_count": "%s log line(s)",
   "sablefix.panel.log_truncated": "%s earlier line(s) not sent",
+  "sablefix.scan.registry_cleared": "%s file(s) that are healthy again were taken off the damage list",
+  "sablefix.scan.unmask_ok": "Unlocked %s stale read-only sublevel file(s)",
+  "sablefix.watch.save_observer_up": "Save observer up (polls every 30 s; records a stall only after it crosses a full poll)",
+  "sablefix.net.channel_ok": "Network channel registered",
+  "sablefix.cmd.backup_deleted_log": "Backup deleted: %s",
+  "sablefix.cmd.backup_purged_log": "Backups purged: %s deleted, %s failed",
   "sablefix.damage.stale_notice": "§6[SableFix] §c%s sublevel files are stale read-only (last fix interrupted) — run /sablefix unmask so Sable can save again"
 }

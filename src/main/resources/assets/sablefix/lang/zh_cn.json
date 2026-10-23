@@ -209,5 +209,11 @@
   "sablefix.panel.list_truncated": "共 %s 个，已列出前 %s 个",
   "sablefix.panel.log_count": "%s 行日志",
   "sablefix.panel.log_truncated": "另有 %s 行更早的未下发",
+  "sablefix.scan.registry_cleared": "%s 个已恢复健康的文件从损伤登记簿移除",
+  "sablefix.scan.unmask_ok": "%s 个残留只读的子层级文件已恢复可写",
+  "sablefix.watch.save_observer_up": "保存观察者启动（每 30s 轮询保存 future，跨过一轮仍卡住才登记）",
+  "sablefix.net.channel_ok": "网络通道已注册",
+  "sablefix.cmd.backup_deleted_log": "已删除备份：%s",
+  "sablefix.cmd.backup_purged_log": "备份清理完成：删除 %s 个，失败 %s 个",
   "sablefix.damage.stale_notice": "§6[SableFix] §c检测到 %s 个子层级文件残留只读（上次 fix 被中断）——用 /sablefix unmask 解除，Sable 才能保存进度"
 }

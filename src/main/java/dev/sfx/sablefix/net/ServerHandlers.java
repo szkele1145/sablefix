@@ -438,7 +438,8 @@ public final class ServerHandlers {
             throw new java.nio.file.NoSuchFileException(target.toString());
         }
         Files.delete(target);
-        SableFixMod.LOGGER.info("backup deleted: {}", target);
+        // 十轮审计#77：走 ModLog（面板/报告也能看到），名称用文件名而非全路径（更短）。
+        dev.sfx.sablefix.log.ModLog.infoT("sablefix.cmd.backup_deleted_log", target.getFileName().toString());
     }
 
     /** 清空 backups/sablefix 下全部 .bak，返回删除数量。
@@ -465,7 +466,8 @@ public final class ServerHandlers {
                 }
             }
         }
-        SableFixMod.LOGGER.info("backup purge: {} file(s) deleted, {} failed", n, failed);
+        // 十轮审计#77：走 ModLog（面板/报告也能看到）
+        dev.sfx.sablefix.log.ModLog.infoT("sablefix.cmd.backup_purged_log", n, failed);
         // 一个都没删成且确实有文件 → 抛出去（命令层给「被占用」提示）
         if (n == 0 && failed > 0) {
             throw new java.nio.file.FileSystemException(backupDir.toString(), null,
