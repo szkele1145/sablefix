@@ -610,7 +610,12 @@ public final class SfxCommands {
             final int fe = entities, fbe = blockEntities;
             final String fDim = level.dimension().location().toString();
             final int fCx = cx, fCz = cz;
-            src.sendSuccess(() -> tr("sablefix.cmd.diag_header", "(" + fCx * 16 + ", " + fCz * 16 + ")", status), false);
+            // 十轮审计#79：lang 是 "Chunk diag [%s, %s]: %s"（**3 个占位符**：x、z、状态），
+            // 原来把 x/z 拼成一个 "(x, z)" 只传 2 个参数 → 参数不足，MC 把整行退化成
+            // 未替换的模板（控制台/RCON 实测看到 "Chunk diag [%s, %s]: %s"）。
+            // 现在按占位符个数逐个传，括号由 lang 文本提供。
+            src.sendSuccess(() -> tr("sablefix.cmd.diag_header",
+                    String.valueOf(fCx * 16), String.valueOf(fCz * 16), status), false);
             src.sendSuccess(() -> tr("sablefix.cmd.diag_dim", fDim), false);
             src.sendSuccess(() -> tr("sablefix.cmd.diag_entities", fe), false);
             src.sendSuccess(() -> tr("sablefix.cmd.diag_be", fbe), false);
