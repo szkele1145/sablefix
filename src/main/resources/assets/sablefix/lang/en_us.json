@@ -150,7 +150,6 @@
   "sablefix.cmd.help_repair_all": "repair every problem file (dry summary / apply with per-file backup)",
   "sablefix.cmd.repair_all_nothing": "Nothing to repair",
   "sablefix.cmd.repair_all_plan": "Repair-all plan: %s file(s), %s dead slot(s):",
-  "sablefix.cmd.repair_slots_word": "dead slot(s)",
   "sablefix.cmd.repair_all_file_line": "  %s → %s dead slot(s)",
   "sablefix.cmd.repair_all_dry_hint": "Dry summary only. Confirm with /sablefix repair-all apply",
   "sablefix.cmd.repair_all_done": "Repair-all done: %s file(s) ok, %s failed, %s slot(s) cleared",
