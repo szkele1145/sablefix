@@ -4,7 +4,7 @@ license = "MIT"
 
 [[mods]]
 modId = "sablefix"
-version = "1.6.4"
+version = "1.6.5"
 displayName = "Sable Fix Core"
 description = """
 Sable 存档自愈与诊断核心（诊断优先，修复为辅）。
@@ -20,3 +20,20 @@ v1.5.5：审计修复——面板扫描失败冷却标记不再 Long.MIN_VALUE �
 /sablefix check|list|tickets|dump|repair|repair-all|tickets-purge|diag
 /sfxpanel 打开中英双语图形面板。
 """
+
+
+# 依赖声明（十轮审计#75）：原本没有任何 [[dependencies]] 段 → 错误的 MC/NeoForge
+# 版本上 mod 仍会被装载并可能崩溃，而不是给出「需要 1.21.1 / NeoForge 21.1.x」的清晰提示。
+[[dependencies.sablefix]]
+modId = "neoforge"
+type = "required"
+versionRange = "[21.1.0,)"
+ordering = "NONE"
+side = "BOTH"
+
+[[dependencies.sablefix]]
+modId = "minecraft"
+type = "required"
+versionRange = "[1.21.1,1.21.2)"
+ordering = "NONE"
+side = "BOTH"

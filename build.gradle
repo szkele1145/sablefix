@@ -3,7 +3,7 @@ plugins {
     id 'net.neoforged.moddev' version '2.0.78'
 }
 
-version = '1.6.4'
+version = '1.6.5'
 group = 'dev.sfx'
 
 // 发布 jar 命名规范：模组名-模组版本号-游戏版本号-加载器.jar
