@@ -10,3 +10,10 @@ mrpatch.json
 
 proj.json
 proj2.json
+
+# Node/upload scripts
+node_modules/
+package-lock.json
+package.json
+scripts/upload_modrinth.js
+
