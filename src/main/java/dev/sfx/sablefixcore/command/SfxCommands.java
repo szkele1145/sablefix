@@ -41,7 +41,7 @@ public final class SfxCommands {
     }
 
     private static void register(CommandDispatcher<CommandSourceStack> d) {
-        d.register(Commands.literal("sablefix")
+        d.register(Commands.literal("sablefixcore")
                 .requires(s -> s.hasPermission(2))
                 .then(Commands.literal("help").executes(c -> help(c.getSource())))
                 .then(Commands.literal("check").executes(c -> check(c.getSource())))
