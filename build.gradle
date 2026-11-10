@@ -7,17 +7,19 @@ version = '1.6.5'
 group = 'dev.sfx'
 
 // 发布 jar 命名规范：模组名-模组版本号-游戏版本号-加载器.jar
-// 如 sablefix-1.5.0-1.21.1-neoforge.jar（对齐社区惯例：create-1.21.1-6.0.10、sable-neoforge-1.21.1-2.0.6）
+// 如 sablefixcore-1.5.0-1.21.1-neoforge.jar（对齐社区惯例：create-1.21.1-6.0.10、sable-neoforge-1.21.1-2.0.6）
 // 注：base.archivesName 会被 gradle 追加 "-${version}" 导致版本重复，故用 jar 任务重命名。
 base {
-    archivesName = 'sablefix'
+    archivesName = 'sablefixcore'
 }
 tasks.named('jar') {
-    archiveFileName = "sablefix-${project.version}-${project.minecraft_version}-neoforge.jar"
+    archiveFileName = "sablefixcore-${project.version}-${project.minecraft_version}-neoforge.jar"
 }
 
 java {
-    toolchain.languageVersion = JavaLanguageVersion.of(21)
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
 }
 
 neoForge {
@@ -33,15 +35,15 @@ neoForge {
         client {
             client()
             // demo 开关（四轮审计#4：改名空间防第三方劫持；仅 dev 环境生效）：
-            // -Dsablefix.demo=true（gradle 命令行）或环境变量 SABLEFIX_DEMO=1；
-            // tab/窗口尺寸同理（sablefix.demo.tab / SFX_W / SFX_H）
-            def demo = System.getProperty('sablefix.demo') != null || System.getenv('SABLEFIX_DEMO') != null
+            // -Dsablefixcore.demo=true（gradle 命令行）或环境变量 SABLEFIXCORE_DEMO=1；
+            // tab/窗口尺寸同理（sablefixcore.demo.tab / SFX_W / SFX_H）
+            def demo = System.getProperty('sablefixcore.demo') != null || System.getenv('SABLEFIXCORE_DEMO') != null
             if (demo) {
-                systemProperty 'sablefix.demo', 'true'
-                def tab = System.getProperty('sablefix.demo.tab') ?: System.getenv('SABLEFIX_DEMO_TAB')
-                if (tab != null) systemProperty 'sablefix.demo.tab', tab
-                def sc = System.getProperty('sablefix.scale') ?: System.getenv('SFX_SCALE')
-                if (sc != null) systemProperty 'sablefix.scale', sc
+                systemProperty 'sablefixcore.demo', 'true'
+                def tab = System.getProperty('sablefixcore.demo.tab') ?: System.getenv('SABLEFIXCORE_DEMO_TAB')
+                if (tab != null) systemProperty 'sablefixcore.demo.tab', tab
+                def sc = System.getProperty('sablefixcore.scale') ?: System.getenv('SFX_SCALE')
+                if (sc != null) systemProperty 'sablefixcore.scale', sc
                 def w = System.getProperty('sfx.w') ?: System.getenv('SFX_W')
                 def h = System.getProperty('sfx.h') ?: System.getenv('SFX_H')
                 if (w != null) {
@@ -56,7 +58,7 @@ neoForge {
     }
 
     mods {
-        sablefix {
+        sablefixcore {
             sourceSet sourceSets.main
         }
     }
@@ -64,4 +66,6 @@ neoForge {
 
 tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+    options.fork = true
+    options.forkOptions.javaHome = file('C:/java/jdk-21')
 }
