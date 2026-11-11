@@ -78,7 +78,7 @@ v1.6.7  ← 修复 @Mod 注解 modId 与 mods.toml 不一致（`sablefix` → `s
 | 平台 | 版本 ID | 文件名 | SHA1 | 状态 |
 |------|---------|--------|------|------|
 | **GitHub Release** | Release ID: 441475303 | `sablefixcore-1.6.7-1.21.1-neoforge.jar` | `0DE846AA33011756FF53D1509626C2261C2FFA8A` | ✅ 已上传 |
-| **Modrinth** | `sWmq6wru` (版本 1.6.7) | `sablefixcore-1.6.7-1.21.1-neoforge.jar` | `0DE846AA33011756FF53D1509626C2261C2FFA8A` | ✅ 已上传 |
+| **Modrinth** | `d7lU5Fp2` (版本 1.6.7) | `sablefixcore-1.6.7-1.21.1-neoforge.jar` | `0DE846AA33011756FF53D1509626C2261C2FFA8A` | ✅ 已上传 (changelog 已修正编码) |
 
 ---
 
@@ -282,7 +282,7 @@ curl -H "Authorization: token <YOUR_GITHUB_PAT>" \
 
 # 验证 Modrinth 版本
 curl -H "Authorization: <YOUR_MODRINTH_TOKEN>" \
-  https://api.modrinth.com/v2/version/UqWfJ0c4
+  https://api.modrinth.com/v2/version/d7lU5Fp2
 
 # 本地编译验证
 ./gradlew compileJava --no-daemon
