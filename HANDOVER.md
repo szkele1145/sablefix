@@ -77,8 +77,8 @@ v1.6.7  ← 修复 @Mod 注解 modId 与 mods.toml 不一致（`sablefix` → `s
 
 | 平台 | 版本 ID | 文件名 | SHA1 | 状态 |
 |------|---------|--------|------|------|
-| **GitHub Release** | 待创建 | `sablefixcore-1.6.7-1.21.1-neoforge.jar` | `0DE846AA33011756FF53D1509626C2261C2FFA8A` | ⏳ 待上传 |
-| **Modrinth** | 待创建 | `sablefixcore-1.6.7-1.21.1-neoforge.jar` | `0DE846AA33011756FF53D1509626C2261C2FFA8A` | ⏳ 待上传 |
+| **GitHub Release** | Release ID: 441475303 | `sablefixcore-1.6.7-1.21.1-neoforge.jar` | `0DE846AA33011756FF53D1509626C2261C2FFA8A` | ✅ 已上传 |
+| **Modrinth** | `sWmq6wru` (版本 1.6.7) | `sablefixcore-1.6.7-1.21.1-neoforge.jar` | `0DE846AA33011756FF53D1509626C2261C2FFA8A` | ✅ 已上传 |
 
 ---
 
