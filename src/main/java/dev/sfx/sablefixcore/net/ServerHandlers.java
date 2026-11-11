@@ -386,7 +386,7 @@ public final class ServerHandlers {
     public static List<NetHandler.PanelData.BackupRow> listBackups(MinecraftServer server) {
         try {
             Path world = worldDir(server);
-            Path backupDir = world.resolve("backups").resolve("sablefix").normalize();
+            Path backupDir = world.resolve("backups").resolve("sablefixcore").normalize();
             if (!Files.isDirectory(backupDir)) return List.of();
             long now = System.currentTimeMillis();
             List<NetHandler.PanelData.BackupRow> out = new ArrayList<>();
@@ -428,7 +428,7 @@ public final class ServerHandlers {
                 || name.equals(".") || name.equals("..")) {
             throw new IllegalArgumentException("非法备份文件名: " + name);
         }
-        Path backupDir = worldDir(server).resolve("backups").resolve("sablefix");
+        Path backupDir = worldDir(server).resolve("backups").resolve("sablefixcore");
         // 十轮审计#44：dir 也要**归一化**（同 onRepairReq）——只归一化 target、拿未归一化的
         // dir 去比 → dir 含 ".." 时（--world-path 带相对段即可出现）startsWith 恒 false
         // → **所有备份都删不掉**。两侧都归一化后再比，穿越防护不受影响。
@@ -449,7 +449,7 @@ public final class ServerHandlers {
      *  （与十轮审计#35「一个坏文件不能中断整批」同族。）
      *  现在：单个失败记日志并继续；**全部**都失败才抛（让用户知道确实有问题）。 */
     public static int purgeBackups(MinecraftServer server) throws IOException {
-        Path backupDir = worldDir(server).resolve("backups").resolve("sablefix");
+        Path backupDir = worldDir(server).resolve("backups").resolve("sablefixcore");
         if (!Files.isDirectory(backupDir)) return 0;
         int n = 0;
         int failed = 0;

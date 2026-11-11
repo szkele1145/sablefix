@@ -243,12 +243,12 @@ public final class DiagReport {
      *  整个 report 命令失败 → 兜底形同虚设。现在两处共用同一解析。 */
     private static Path reportDir() {
         try {
-            return Path.of(System.getProperty("user.dir"), "logs", "sablefix");
+            return Path.of(System.getProperty("user.dir"), "logs", "sablefixcore");
         } catch (Exception e) {
             try {
-                return Path.of("logs", "sablefix");
+                return Path.of("logs", "sablefixcore");
             } catch (Exception e2) {
-                return Path.of(".").resolve("logs").resolve("sablefix");
+                return Path.of(".").resolve("logs").resolve("sablefixcore");
             }
         }
     }

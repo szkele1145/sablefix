@@ -118,8 +118,8 @@ public final class SubLevelRepair {
         if (!plan.slvlr() && plan.size() < 4096) throw new IOException("header truncated, not repairable");
         Path dir = plan.file().getParent();                 // …/world/sublevels
         Path backupDir = dir != null && dir.getParent() != null
-                ? dir.getParent().resolve("backups").resolve("sablefix")  // …/world/backups/sablefix（锚定存档，不依赖 CWD）
-                : Path.of("backups", "sablefix");
+                ? dir.getParent().resolve("backups").resolve("sablefixcore")  // …/world/backups/sablefixcore（锚定存档，不依赖 CWD）
+                : Path.of("backups", "sablefixcore");
         Files.createDirectories(backupDir);
         String stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS"));   // 含毫秒：同秒多次修复不互相覆盖
         Path backup = backupDir.resolve(plan.file().getFileName() + "." + stamp + ".bak");

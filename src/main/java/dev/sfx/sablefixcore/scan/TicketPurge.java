@@ -60,8 +60,8 @@ public final class TicketPurge {
         }
         Path dir = p.getParent();
         Path backupDir = dir != null && dir.getParent() != null
-                ? dir.getParent().resolve("backups").resolve("sablefix")
-                : Path.of("backups", "sablefix");
+                ? dir.getParent().resolve("backups").resolve("sablefixcore")
+                : Path.of("backups", "sablefixcore");
         Files.createDirectories(backupDir);
         // 十轮审计#19：时间戳加毫秒，且**绝不覆盖**已有备份。
         //  原实现只到秒（yyyyMMdd-HHmmss）且用 REPLACE_EXISTING → 同一秒内两次清理会

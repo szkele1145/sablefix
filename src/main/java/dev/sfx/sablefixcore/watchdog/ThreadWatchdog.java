@@ -230,12 +230,12 @@ public final class ThreadWatchdog {
         }
     }
 
-    /** 锚定日志目录：<游戏运行目录>/logs/sablefix。优先 JVM user.dir（服务器启动目录），失败退回 CWD。 */
+    /** 锚定日志目录：<游戏运行目录>/logs/sablefixcore。优先 JVM user.dir（服务器启动目录），失败退回 CWD。 */
     private static Path resolveDumpDir() {
         try {
-            return Path.of(System.getProperty("user.dir"), "logs", "sablefix");
+            return Path.of(System.getProperty("user.dir"), "logs", "sablefixcore");
         } catch (Exception e) {
-            return Path.of("logs", "sablefix");
+            return Path.of("logs", "sablefixcore");
         }
     }
 

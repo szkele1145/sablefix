@@ -705,7 +705,7 @@ public final class SfxCommands {
         List<dev.sfx.sablefixcore.net.NetHandler.PanelData.BackupRow> rows =
                 dev.sfx.sablefixcore.net.ServerHandlers.listBackups(server);
         Path backupDir = server.getWorldPath(net.minecraft.world.level.storage.LevelResource.ROOT)
-                .resolve("backups").resolve("sablefix");
+                .resolve("backups").resolve("sablefixcore");
         src.sendSuccess(() -> tr("sablefixcore.cmd.backup_dir", backupDir.toString()), false);
         if (rows.isEmpty()) {
             src.sendSuccess(() -> tr("sablefixcore.cmd.backup_none"), false);

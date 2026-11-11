@@ -69,15 +69,16 @@ v1.6.2
 v1.6.3  ← 发布目标版本（已发布，禁止发布 1.5.4）
 v1.6.4
 v1.6.5  ← 含 `mods.toml` 反引号修复，但 `modLoader` 仍为 `neoforge`（错误）
-v1.6.6  ← 当前最新版本：修正 `modLoader = "javafml"` / `loaderVersion = "[4,)"`，移除 neoforge 依赖声明
+v1.6.6  ← 修正 `modLoader = "javafml"` / `loaderVersion = "[4,)"`，移除 neoforge 依赖声明
+v1.6.7  ← 修复 @Mod 注解 modId 与 mods.toml 不一致（`sablefix` → `sablefixcore`），同步日志/备份路径
 ```
 
-### 当前发布状态 (v1.6.6)
+### 当前发布状态 (v1.6.7)
 
 | 平台 | 版本 ID | 文件名 | SHA1 | 状态 |
 |------|---------|--------|------|------|
-| **GitHub Release** | Release ID: 441285341 | `sablefixcore-1.6.6-1.21.1-neoforge.jar` | `93972B23288781116E742F83F1A918D453A91415` | ✅ 已上传 |
-| **Modrinth** | `UqWfJ0c4` (版本 1.6.6) | `sablefixcore-1.6.6-1.21.1-neoforge.jar` | `93972B23288781116E742F83F1A918D453A91415` | ✅ 已上传 |
+| **GitHub Release** | 待创建 | `sablefixcore-1.6.7-1.21.1-neoforge.jar` | `0DE846AA33011756FF53D1509626C2261C2FFA8A` | ⏳ 待上传 |
+| **Modrinth** | 待创建 | `sablefixcore-1.6.7-1.21.1-neoforge.jar` | `0DE846AA33011756FF53D1509626C2261C2FFA8A` | ⏳ 待上传 |
 
 ---
 
@@ -103,12 +104,20 @@ v1.6.6  ← 当前最新版本：修正 `modLoader = "javafml"` / `loaderVersion
   - 移除 description 中所有反引号 (`` ` ``)
 
 ### 3. `modLoader` 修正 (v1.6.6)
-- **提交**：`99230d8` (本次)
+- **提交**：`99230d8`
 - **问题**：`modLoader = "neoforge"` 导致 `Missing language provider neoforge`，NeoForge 21.1.x 无法加载模组
 - **修复**：
   - `modLoader = "javafml"` (正确值)
   - `loaderVersion = "[4,)"` (FML 4.x)
   - 移除 `[[dependencies.sablefixcore]]` 中 `modId = "neoforge"` 段（loader 不作为普通 mod 依赖）
+
+### 4. `@Mod` 注解 modId 修正 (v1.6.7)
+- **提交**：`HEAD` (本次)
+- **问题**：`SableFixMod.MODID = "sablefix"` 与 `mods.toml` 的 `modId = "sablefixcore"` 不一致，导致模组加载失败
+- **修复**：
+  - `SableFixMod.MODID = "sablefixcore"`
+  - `ClientSetup.@EventBusSubscriber(modid = "sablefixcore")`
+  - 同步代码中所有日志/备份路径：`logs/sablefix` → `logs/sablefixcore`、`backups/sablefix` → `backups/sablefixcore`
 
 ### 3. 根命令修复
 - **提交**：`763c517`
@@ -128,7 +137,7 @@ v1.6.6  ← 当前最新版本：修正 `modLoader = "javafml"` / `loaderVersion
 
 ### 5. 构建产物命名
 - **JAR 命名**：`sablefixcore-${version}-${minecraft_version}-neoforge.jar`
-- **当前产物 (v1.6.6)**：`sablefixcore-1.6.6-1.21.1-neoforge.jar` (SHA1: `93972B23288781116E742F83F1A918D453A91415`)
+- **当前产物 (v1.6.7)**：`sablefixcore-1.6.7-1.21.1-neoforge.jar` (SHA1: `0DE846AA33011756FF53D1509626C2261C2FFA8A`)
 
 ---
 
@@ -160,7 +169,7 @@ F:\vibe coding工程\sfx\proj\
 │                   ├── zh_cn.json
 │                   └── en_us.json
 └── build/libs/
-    └── sablefixcore-1.6.6-1.21.1-neoforge.jar
+    └── sablefixcore-1.6.7-1.21.1-neoforge.jar
 ```
 
 ---
@@ -300,8 +309,14 @@ curl -H "Authorization: <YOUR_MODRINTH_TOKEN>" \
 
 ---
 
-## 📝 更新日志摘要 (v1.6.6)
+## 📝 更新日志摘要 (v1.6.7)
 
+> **v1.6.7** - 修复 @Mod 注解 modId 与 mods.toml 不一致（致命：模组无法加载）
+> - `SableFixMod.MODID = "sablefixcore"` (原 `sablefix`)
+> - `ClientSetup.@EventBusSubscriber(modid = "sablefixcore")`
+> - 同步代码中所有日志/备份路径：`logs/sablefix` → `logs/sablefixcore`、`backups/sablefix` → `backups/sablefixcore`
+> - 同步更新 GitHub Release / Modrinth 双平台
+>
 > **v1.6.6** - 修正 `modLoader` 为 `javafml`，修复 NeoForge 21.1.x 无法加载模组
 > - `modLoader = "javafml"` / `loaderVersion = "[4,)"` (原 `neoforge` / `[21.1,)`)
 > - 移除 `dependencies.sablefixcore.neoforge` 声明（loader 不作为普通 mod 依赖）

@@ -13,7 +13,7 @@ import net.neoforged.neoforge.client.event.RegisterClientCommandsEvent;
  * 客户端侧入口：只在客户端加载。
  * /sfxpanel 打开面板；网络回包桥接到当前打开的界面。
  */
-@EventBusSubscriber(modid = "sablefix", value = net.neoforged.api.distmarker.Dist.CLIENT)
+@EventBusSubscriber(modid = "sablefixcore", value = net.neoforged.api.distmarker.Dist.CLIENT)
 public final class ClientSetup {
 
     private static SfxPanelScreen openScreen;

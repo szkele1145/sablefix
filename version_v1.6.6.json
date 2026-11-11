@@ -1,0 +1,13 @@
+{
+  "name": "v1.6.6",
+  "version_number": "1.6.6",
+  "changelog": "## Sable Fix Core v1.6.6\n\n### 修复\n- **修正 modLoader 配置**：modLoader = \"javafml\" / loaderVersion = \"[4,)\" (原错误值 neoforge / [21.1,) )\n- 移除 dependencies.sablefixcore.neoforge 声明（NeoForge loader 不作为普通 mod 依赖）\n- 修复 Missing language provider neoforge 导致的模组无法加载问题\n\n### 兼容性\n- Minecraft 1.21.1\n- NeoForge 21.1.x\n- Java 21",
+  "dependencies": [],
+  "game_versions": ["1.21.1"],
+  "version_type": "release",
+  "loaders": ["neoforge"],
+  "featured": false,
+  "project_id": "rPkYnI7j",
+  "file_parts": ["sablefixcore-1.6.6-1.21.1-neoforge.jar"],
+  "primary_file": "sablefixcore-1.6.6-1.21.1-neoforge.jar"
+}
