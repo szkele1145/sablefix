@@ -76,8 +76,8 @@ v1.6.6  ← 当前最新版本：修正 `modLoader = "javafml"` / `loaderVersion
 
 | 平台 | 版本 ID | 文件名 | SHA1 | 状态 |
 |------|---------|--------|------|------|
-| **GitHub Release** | 待创建 | `sablefixcore-1.6.6-1.21.1-neoforge.jar` | `93972B23288781116E742F83F1A918D453A91415` | ⏳ 待上传 |
-| **Modrinth** | 待创建 | `sablefixcore-1.6.6-1.21.1-neoforge.jar` | `93972B23288781116E742F83F1A918D453A91415` | ⏳ 待上传 |
+| **GitHub Release** | Release ID: 441285341 | `sablefixcore-1.6.6-1.21.1-neoforge.jar` | `93972B23288781116E742F83F1A918D453A91415` | ✅ 已上传 |
+| **Modrinth** | `UqWfJ0c4` (版本 1.6.6) | `sablefixcore-1.6.6-1.21.1-neoforge.jar` | `93972B23288781116E742F83F1A918D453A91415` | ✅ 已上传 |
 
 ---
 
@@ -270,6 +270,10 @@ curl -H "Authorization: <YOUR_MODRINTH_TOKEN>" \
 # 验证 GitHub Release
 curl -H "Authorization: token <YOUR_GITHUB_PAT>" \
   https://api.github.com/repos/szkele1145/sablefix/releases/tags/v1.6.6
+
+# 验证 Modrinth 版本
+curl -H "Authorization: <YOUR_MODRINTH_TOKEN>" \
+  https://api.modrinth.com/v2/version/UqWfJ0c4
 
 # 本地编译验证
 ./gradlew compileJava --no-daemon
